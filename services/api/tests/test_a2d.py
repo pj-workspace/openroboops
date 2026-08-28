@@ -42,17 +42,17 @@ async def test_a2d_partial_telemetry_failure_keeps_reachable_robot_online(
     async def fake_ssh():
         yield FakeConnection()
 
-    async def fake_collector(_method: str, path: str, _payload=None):
+    async def fake_collector(_connection, _method: str, path: str, _payload=None):
         if path == "/api/custom_battery":
             raise RuntimeError("collector rejected request")
         return {"data": {"job": None} if path == "/api/custom_progress" else {}}
 
-    async def fake_vr_activity():
+    async def fake_vr_activity(_connection):
         return True, {"detector": "pico-process-activity", "cpuTicksDelta": 8}
 
     monkeypatch.setattr(adapter, "_ssh", fake_ssh)
-    monkeypatch.setattr(adapter, "_collector_request", fake_collector)
-    monkeypatch.setattr(adapter, "_read_vr_activity", fake_vr_activity)
+    monkeypatch.setattr(adapter, "_collector_request_on_connection", fake_collector)
+    monkeypatch.setattr(adapter, "_read_vr_activity_on_connection", fake_vr_activity)
 
     status = await adapter.read_status()
 

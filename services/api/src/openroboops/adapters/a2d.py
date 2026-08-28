@@ -76,31 +76,42 @@ class A2DAdapter(RobotAdapter):
             connection.close()
             await connection.wait_closed()
 
-    async def _collector_request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def _collector_request_on_connection(
+        self,
+        connection: asyncssh.SSHClientConnection,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         collector_port = int(self.connection.get("collector_port", 8888))
-        async with self._ssh() as connection:
-            listener = await connection.forward_local_port("127.0.0.1", 0, "127.0.0.1", collector_port)
-            try:
-                local_port = listener.get_port()
-                async with httpx.AsyncClient(timeout=90.0) as client:
-                    response = await client.request(
-                        method,
-                        f"http://127.0.0.1:{local_port}{path}",
-                        json=payload,
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-            finally:
-                listener.close()
-                await listener.wait_closed()
+        listener = await connection.forward_local_port("127.0.0.1", 0, "127.0.0.1", collector_port)
+        try:
+            local_port = listener.get_port()
+            async with httpx.AsyncClient(timeout=90.0) as client:
+                response = await client.request(
+                    method,
+                    f"http://127.0.0.1:{local_port}{path}",
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+        finally:
+            listener.close()
+            await listener.wait_closed()
         if not isinstance(data, dict):
             raise RuntimeError("collector returned a non-object response")
         if int(data.get("code", 0)) != 0:
             raise RuntimeError(str(data.get("msg") or "collector rejected request"))
         return data
 
-    async def _read_vr_activity(self) -> tuple[bool | None, dict[str, Any]]:
-        """Positively detect PICO activity without opening a rosbridge connection."""
+    async def _collector_request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        async with self._ssh() as connection:
+            return await self._collector_request_on_connection(connection, method, path, payload)
+
+    async def _read_vr_activity_on_connection(
+        self,
+        connection: asyncssh.SSHClientConnection,
+    ) -> tuple[bool | None, dict[str, Any]]:
         command = r"""
 pid=$(pgrep -f '/pico_streamer( |$)' | head -1)
 if [ -z "$pid" ]; then
@@ -118,8 +129,7 @@ else
     printf '%s %s\n' "$((after-before))" "$listener"
 fi
 """
-        async with self._ssh() as connection:
-            result = await connection.run(command, check=False, timeout=4)
+        result = await connection.run(command, check=False, timeout=4)
         stdout = result.stdout if isinstance(result.stdout, str) else ""
         values = stdout.strip().split()
         if result.exit_status != 0 or len(values) != 2 or not all(value.isdigit() for value in values):
@@ -135,6 +145,11 @@ fi
             return True, details
         return None, details
 
+    async def _read_vr_activity(self) -> tuple[bool | None, dict[str, Any]]:
+        """Positively detect PICO activity without opening a rosbridge connection."""
+        async with self._ssh() as connection:
+            return await self._read_vr_activity_on_connection(connection)
+
     async def probe(self) -> AdapterStatus:
         return await self.read_status()
 
@@ -148,43 +163,23 @@ fi
             "progress": "/api/custom_progress",
         }
 
-        async def read_one(name: str, path: str) -> tuple[str, dict[str, Any]]:
-            try:
-                response = await self._collector_request("GET", path)
-            except Exception as exc:
-                raise RuntimeError(f"{name} status unavailable: {exc}") from exc
-            value = response.get("data", {})
-            if not isinstance(value, dict):
-                raise RuntimeError(f"collector returned invalid {name} data")
-            return name, value
-
-        vr_task = asyncio.create_task(self._read_vr_activity())
-        values = await asyncio.gather(
-            *(read_one(name, path) for name, path in endpoints.items()),
-            return_exceptions=True,
-        )
-        payload: dict[str, Any] = {}
-        warnings: list[str] = []
-        for item in values:
-            if isinstance(item, BaseException):
-                warnings.append(str(item))
-            else:
-                name, value = item
-                payload[name] = value
-        try:
-            vr_active, vr_status = await vr_task
-        except Exception:
-            payload["vrActive"] = None
-            warnings.append("PICO/VR activity is unknown; motion commands fail closed")
-        else:
-            payload["vrActive"] = vr_active
-            payload["vrStatus"] = vr_status
-            if vr_active is True:
-                warnings.append("PICO/VR input is active; motion commands are blocked")
-            else:
-                warnings.append("PICO/VR activity is unknown; motion commands fail closed")
-
         async with self._ssh() as connection:
+
+            async def read_one(name: str, path: str) -> tuple[str, dict[str, Any]]:
+                try:
+                    response = await self._collector_request_on_connection(connection, "GET", path)
+                except Exception as exc:
+                    raise RuntimeError(f"{name} status unavailable: {exc}") from exc
+                value = response.get("data", {})
+                if not isinstance(value, dict):
+                    raise RuntimeError(f"collector returned invalid {name} data")
+                return name, value
+
+            vr_task = asyncio.create_task(self._read_vr_activity_on_connection(connection))
+            values = await asyncio.gather(
+                *(read_one(name, path) for name, path in endpoints.items()),
+                return_exceptions=True,
+            )
             disk_result = await connection.run(
                 f"df -B1 --output=size,used,avail {shlex.quote(self.data_root)} | tail -1",
                 check=False,
@@ -195,6 +190,31 @@ fi
                 check=False,
                 timeout=6,
             )
+            try:
+                vr_active, vr_status = await vr_task
+            except Exception:
+                vr_active = None
+                vr_status = None
+
+        payload: dict[str, Any] = {}
+        warnings: list[str] = []
+        for item in values:
+            if isinstance(item, BaseException):
+                warnings.append(str(item))
+            else:
+                name, value = item
+                payload[name] = value
+        if vr_status is None:
+            payload["vrActive"] = None
+            warnings.append("PICO/VR activity is unknown; motion commands fail closed")
+        else:
+            payload["vrActive"] = vr_active
+            payload["vrStatus"] = vr_status
+            if vr_active is True:
+                warnings.append("PICO/VR input is active; motion commands are blocked")
+            else:
+                warnings.append("PICO/VR activity is unknown; motion commands fail closed")
+
         disk_stdout = disk_result.stdout if isinstance(disk_result.stdout, str) else ""
         disk_values = [int(item) for item in disk_stdout.split() if item.isdigit()]
         if len(disk_values) >= 3:
