@@ -43,6 +43,7 @@ from ..models import (
 from ..schemas import (
     AuditResponse,
     AuthResponse,
+    CameraPreviewResponse,
     CollectionResponse,
     CollectionStartRequest,
     CommandRequest,
@@ -443,6 +444,63 @@ async def list_collections(robot_id: str, db: DB, _: Admin) -> list[CollectionSe
                 .limit(100)
             )
         ).all()
+    )
+
+
+@router.get("/robots/{robot_id}/camera-previews", response_model=list[CameraPreviewResponse])
+async def list_camera_previews(robot_id: str, db: DB, _: Admin) -> list[CameraPreviewResponse]:
+    robot = await db.get(Robot, robot_id)
+    if robot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="robot not found")
+    if not robot.online:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="robot is offline")
+    try:
+        previews = await create_adapter(robot.adapter_type, robot.connection).list_camera_previews()
+    except Exception as exc:
+        logger.warning("camera preview metadata failed for robot %s: %s", robot.id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="camera preview metadata is unavailable",
+        ) from exc
+    return [
+        CameraPreviewResponse(
+            channel=preview.channel,
+            label=preview.label,
+            captured_at=datetime.fromtimestamp(preview.captured_at_ms / 1000, tz=UTC)
+            if preview.captured_at_ms is not None
+            else None,
+            age_ms=preview.age_ms,
+            size=preview.size,
+            stale=preview.age_ms is None or preview.age_ms > 10_000,
+            frame_url=f"/api/v1/robots/{robot.id}/camera-previews/{preview.channel}/frame?v={preview.version}",
+        )
+        for preview in previews
+    ]
+
+
+@router.get("/robots/{robot_id}/camera-previews/{channel}/frame", response_class=Response)
+async def read_camera_preview(robot_id: str, channel: str, db: DB, _: Admin) -> Response:
+    robot = await db.get(Robot, robot_id)
+    if robot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="robot not found")
+    if not robot.online:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="robot is offline")
+    try:
+        frame = await create_adapter(robot.adapter_type, robot.connection).read_camera_preview(channel)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("camera frame failed for robot %s channel %s: %s", robot.id, channel, exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="camera frame is unavailable") from exc
+    return Response(
+        content=frame.content,
+        media_type=frame.media_type,
+        headers={
+            "Cache-Control": "private, max-age=2",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

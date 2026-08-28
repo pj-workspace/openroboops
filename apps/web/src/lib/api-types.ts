@@ -280,6 +280,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/robots/{robot_id}/camera-previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Camera Previews */
+        get: operations["list_camera_previews_api_v1_robots__robot_id__camera_previews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/robots/{robot_id}/camera-previews/{channel}/frame": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Camera Preview */
+        get: operations["read_camera_preview_api_v1_robots__robot_id__camera_previews__channel__frame_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/collections/{collection_id}/stop": {
         parameters: {
             query?: never;
@@ -384,6 +418,23 @@ export interface components {
             user: components["schemas"]["UserResponse"];
             /** Csrf Token */
             csrf_token: string;
+        };
+        /** CameraPreviewResponse */
+        CameraPreviewResponse: {
+            /** Channel */
+            channel: string;
+            /** Label */
+            label: string;
+            /** Captured At */
+            captured_at: string | null;
+            /** Age Ms */
+            age_ms: number | null;
+            /** Size */
+            size: number | null;
+            /** Stale */
+            stale: boolean;
+            /** Frame Url */
+            frame_url: string;
         };
         /** CollectionResponse */
         CollectionResponse: {
@@ -1377,6 +1428,71 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CollectionResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_camera_previews_api_v1_robots__robot_id__camera_previews_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                robot_id: string;
+            };
+            cookie?: {
+                openroboops_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraPreviewResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_camera_preview_api_v1_robots__robot_id__camera_previews__channel__frame_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                robot_id: string;
+                channel: string;
+            };
+            cookie?: {
+                openroboops_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

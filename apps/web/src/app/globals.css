@@ -131,6 +131,19 @@ label { display: grid; gap: 7px; color: #9ca6af; font-size: 10px; font-weight: 6
 .form-hint { color: var(--yellow); font-size: 10px; }
 .form-error { color: #f1888e; font-size: 11px; }
 .collection-layout { align-items: start; }
+.collection-page { display: grid; gap: 18px; }
+.camera-panel { overflow: hidden; }
+.camera-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.camera-card { overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: #0c0f12; }
+.camera-frame { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: #080a0c; }
+.camera-frame img { width: 100%; height: 100%; object-fit: cover; }
+.camera-stale { position: absolute; top: 9px; right: 9px; padding: 4px 7px; border: 1px solid #705727; border-radius: 999px; background: #2d2515e8; color: #ebc773; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.camera-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px; }
+.camera-meta strong, .camera-meta small { display: block; }
+.camera-meta strong { font-size: 11px; }
+.camera-meta small { margin-top: 4px; font-size: 9px; }
+.camera-hint { margin-top: 12px; }
+.camera-error { border-color: #604b24; background: #2d2515; color: #ebc773; }
 .session-list, .audit-list { display: grid; }
 .session-list article, .audit-list > div { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 0; border-top: 1px solid var(--line); }
 .session-list article:first-child, .audit-list > div:first-child { border-top: 0; }
@@ -180,6 +193,7 @@ label { display: grid; gap: 7px; color: #9ca6af; font-size: 10px; font-weight: 6
   .tabs { padding: 0 22px; gap: 16px; overflow-x: auto; }
   .operations-grid { grid-template-columns: 1fr; }
   .wide-panel { grid-column: auto; }
+  .camera-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 720px) {
@@ -195,6 +209,7 @@ label { display: grid; gap: 7px; color: #9ca6af; font-size: 10px; font-weight: 6
   .tabs .icon { width: 20px; height: 20px; }
   .content { padding: 18px; }
   .metric-grid, .two-column, .form-grid { grid-template-columns: 1fr; }
+  .camera-grid { grid-template-columns: 1fr; }
   .wide { grid-column: auto; }
   .metric { min-height: 100px; }
 }

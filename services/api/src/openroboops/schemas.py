@@ -126,6 +126,16 @@ class CollectionResponse(ApiModel):
     stopped_at: datetime | None
 
 
+class CameraPreviewResponse(ApiModel):
+    channel: str
+    label: str
+    captured_at: datetime | None
+    age_ms: int | None
+    size: int | None
+    stale: bool
+    frame_url: str
+
+
 class SyncJobResponse(ApiModel):
     id: str
     robot_id: str

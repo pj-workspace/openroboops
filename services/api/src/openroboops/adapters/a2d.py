@@ -10,16 +10,25 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import asyncssh
 import httpx
 
-from .base import AdapterEpisode, AdapterStatus, ProgressCallback, RobotAdapter
+from .base import (
+    AdapterCameraFrame,
+    AdapterCameraPreview,
+    AdapterEpisode,
+    AdapterStatus,
+    ProgressCallback,
+    RobotAdapter,
+)
 
 A2D_CAPABILITIES = [
     "telemetry",
     "episode_index",
     "collection",
+    "camera_preview",
     "sync",
     "save_reset_pose",
     "reset_arm",
@@ -30,6 +39,12 @@ A2D_CAPABILITIES = [
     "reset_robot",
     "pack_pose",
 ]
+
+CAMERA_PREVIEW_CHANNELS = {
+    "head_color": "Head camera",
+    "hand_left_color": "Left hand camera",
+    "hand_right_color": "Right hand camera",
+}
 
 COMMAND_ENDPOINTS: dict[str, tuple[str, str]] = {
     "save_reset_pose": ("POST", "/api/custom_arm_reset_pose"),
@@ -329,6 +344,64 @@ fi
             raise ValueError("invalid record UID")
         response = await self._collector_request("PUT", f"/api/custom_stop?uuid={record_uid}")
         return response.get("data", {})
+
+    async def list_camera_previews(self) -> list[AdapterCameraPreview]:
+        response = await self._collector_request("GET", "/api/custom_preview_images")
+        data = response.get("data", {})
+        metadata = response.get("meta", {})
+        if not isinstance(data, dict) or not isinstance(metadata, dict):
+            raise RuntimeError("collector returned invalid camera preview metadata")
+        previews: list[AdapterCameraPreview] = []
+        for channel, label in CAMERA_PREVIEW_CHANNELS.items():
+            source_url = data.get(channel)
+            details = metadata.get(channel, {})
+            if not isinstance(source_url, str) or not source_url or not isinstance(details, dict):
+                continue
+            captured_at_ms = details.get("mtimeMs")
+            age_ms = details.get("ageMs")
+            size = details.get("size")
+            previews.append(
+                AdapterCameraPreview(
+                    channel=channel,
+                    label=label,
+                    captured_at_ms=int(captured_at_ms) if isinstance(captured_at_ms, int | float) else None,
+                    age_ms=max(0, int(age_ms)) if isinstance(age_ms, int | float) else None,
+                    size=int(size) if isinstance(size, int | float) else None,
+                    version=str(int(captured_at_ms)) if isinstance(captured_at_ms, int | float) else "unknown",
+                )
+            )
+        return previews
+
+    async def read_camera_preview(self, channel: str) -> AdapterCameraFrame:
+        if channel not in CAMERA_PREVIEW_CHANNELS:
+            raise ValueError("unknown camera preview channel")
+        async with self._ssh() as connection:
+            manifest = await self._collector_request_on_connection(connection, "GET", "/api/custom_preview_images")
+            data = manifest.get("data", {})
+            source_url = data.get(channel) if isinstance(data, dict) else None
+            if not isinstance(source_url, str) or not source_url:
+                raise FileNotFoundError("camera preview is unavailable")
+            parsed = urlsplit(source_url)
+            if parsed.scheme not in {"http", "https"} or parsed.path != "/api/proxy_image":
+                raise RuntimeError("collector returned an unsafe camera preview URL")
+            collector_port = int(self.connection.get("collector_port", 8888))
+            listener = await connection.forward_local_port("127.0.0.1", 0, "127.0.0.1", collector_port)
+            try:
+                target = f"http://127.0.0.1:{listener.get_port()}{parsed.path}"
+                if parsed.query:
+                    target = f"{target}?{parsed.query}"
+                async with httpx.AsyncClient(timeout=20.0) as client:
+                    response = await client.get(target)
+                    response.raise_for_status()
+            finally:
+                listener.close()
+                await listener.wait_closed()
+        media_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
+        if media_type not in {"image/jpeg", "image/png", "image/webp"}:
+            raise RuntimeError("collector returned a non-image camera preview")
+        if not response.content or len(response.content) > 10 * 1024 * 1024:
+            raise RuntimeError("collector returned an invalid camera preview size")
+        return AdapterCameraFrame(content=response.content, media_type=media_type)
 
     async def execute_command(self, command_type: str, params: dict[str, Any]) -> dict[str, Any]:
         if command_type not in COMMAND_ENDPOINTS:

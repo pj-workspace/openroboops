@@ -27,6 +27,22 @@ class AdapterEpisode:
     validation_status: str
 
 
+@dataclass(slots=True)
+class AdapterCameraPreview:
+    channel: str
+    label: str
+    captured_at_ms: int | None
+    age_ms: int | None
+    size: int | None
+    version: str
+
+
+@dataclass(slots=True)
+class AdapterCameraFrame:
+    content: bytes
+    media_type: str
+
+
 class RobotAdapter(ABC):
     def __init__(self, connection: dict[str, Any]) -> None:
         self.connection = connection
@@ -48,6 +64,12 @@ class RobotAdapter(ABC):
 
     @abstractmethod
     async def execute_command(self, command_type: str, params: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def list_camera_previews(self) -> list[AdapterCameraPreview]:
+        return []
+
+    async def read_camera_preview(self, channel: str) -> AdapterCameraFrame:
+        raise NotImplementedError("camera preview unsupported")
 
     @abstractmethod
     async def sync_episode(

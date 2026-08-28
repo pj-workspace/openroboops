@@ -1353,6 +1353,122 @@
         }
       }
     },
+    "/api/v1/robots/{robot_id}/camera-previews": {
+      "get": {
+        "summary": "List Camera Previews",
+        "operationId": "list_camera_previews_api_v1_robots__robot_id__camera_previews_get",
+        "parameters": [
+          {
+            "name": "robot_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Robot Id"
+            }
+          },
+          {
+            "name": "openroboops_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Openroboops Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CameraPreviewResponse"
+                  },
+                  "title": "Response List Camera Previews Api V1 Robots  Robot Id  Camera Previews Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/robots/{robot_id}/camera-previews/{channel}/frame": {
+      "get": {
+        "summary": "Read Camera Preview",
+        "operationId": "read_camera_preview_api_v1_robots__robot_id__camera_previews__channel__frame_get",
+        "parameters": [
+          {
+            "name": "robot_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Robot Id"
+            }
+          },
+          {
+            "name": "channel",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Channel"
+            }
+          },
+          {
+            "name": "openroboops_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Openroboops Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/collections/{collection_id}/stop": {
       "post": {
         "summary": "Stop Collection",
@@ -1832,6 +1948,71 @@
           "csrf_token"
         ],
         "title": "AuthResponse"
+      },
+      "CameraPreviewResponse": {
+        "properties": {
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "age_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Ms"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale"
+          },
+          "frame_url": {
+            "type": "string",
+            "title": "Frame Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channel",
+          "label",
+          "captured_at",
+          "age_ms",
+          "size",
+          "stale",
+          "frame_url"
+        ],
+        "title": "CameraPreviewResponse"
       },
       "CollectionResponse": {
         "properties": {

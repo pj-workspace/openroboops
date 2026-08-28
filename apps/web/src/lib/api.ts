@@ -3,6 +3,7 @@ import type { components } from "./api-types";
 export type Robot = components["schemas"]["RobotResponse"];
 export type Episode = components["schemas"]["EpisodeResponse"];
 export type Collection = components["schemas"]["CollectionResponse"];
+export type CameraPreview = components["schemas"]["CameraPreviewResponse"];
 export type SyncJob = components["schemas"]["SyncJobResponse"];
 export type Command = components["schemas"]["CommandResponse"];
 export type Audit = components["schemas"]["AuditResponse"];

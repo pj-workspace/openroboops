@@ -40,6 +40,10 @@ def test_simulator_end_to_end() -> None:
         assert probe.status_code == 200
         assert probe.json()["online"] is True
 
+        previews = client.get(f"/api/v1/robots/{robot_id}/camera-previews")
+        assert previews.status_code == 200
+        assert previews.json() == []
+
         scan = client.post(f"/api/v1/robots/{robot_id}/episodes/scan", headers=headers)
         assert scan.status_code == 200
         assert len(scan.json()) == 3

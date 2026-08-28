@@ -1,10 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
   post,
   type Audit,
+  type CameraPreview,
   type Collection,
   type Command,
   type Episode,
@@ -250,15 +252,30 @@ function DataView({ robot, notify }: { robot: Robot; notify: (message: string) =
 function CollectionView({ robot, notify }: { robot: Robot; notify: (message: string) => void }) {
   const { t } = useI18n();
   const [rows, setRows] = useState<Collection[]>([]); const [busy, setBusy] = useState(false);
+  const [previews, setPreviews] = useState<CameraPreview[]>([]); const [previewError, setPreviewError] = useState("");
   const load = useCallback(() => api<Collection[]>(`/api/v1/robots/${robot.id}/collections`).then(setRows), [robot.id]);
+  const loadPreviews = useCallback(async () => {
+    try { setPreviews(await api<CameraPreview[]>(`/api/v1/robots/${robot.id}/camera-previews`)); setPreviewError(""); }
+    catch (error) { setPreviewError(error instanceof Error ? error.message : "Camera preview unavailable"); }
+  }, [robot.id]);
   useEffect(() => { load().catch((error) => notify(error.message)); }, [load, notify]);
-  async function start(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); setBusy(true); try { await post(`/api/v1/robots/${robot.id}/collections`, { name: String(form.get("name")), planned_duration_seconds: Number(form.get("duration")) }); notify("Collection started and the collector UID was persisted."); await load(); event.currentTarget.reset(); } catch (error) { notify(error instanceof Error ? error.message : "Collection failed"); } finally { setBusy(false); } }
+  useEffect(() => {
+    // The request resolves asynchronously; this initializes server-backed camera state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadPreviews();
+    const interval = window.setInterval(loadPreviews, 5_000);
+    return () => window.clearInterval(interval);
+  }, [loadPreviews]);
+  async function start(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); setBusy(true); try { await post(`/api/v1/robots/${robot.id}/collections`, { name: String(form.get("name")), planned_duration_seconds: Number(form.get("duration")) }); notify("Collection started and the collector UID was persisted."); await Promise.all([load(), loadPreviews()]); event.currentTarget.reset(); } catch (error) { notify(error instanceof Error ? error.message : "Collection failed"); } finally { setBusy(false); } }
   async function stop(id: string) { try { await post(`/api/v1/collections/${id}/stop`); notify("Collection stopped; indexing will resume automatically."); await load(); } catch (error) { notify(error instanceof Error ? error.message : "Stop failed"); } }
-  return <div className="two-column collection-layout"><section className="panel"><p className="eyebrow">{t("Local orchestration").toUpperCase()}</p><h2>{t("Start collection")}</h2><p className="muted">{t("Allocates local task/job IDs and preserves the collector UID. No vendor upload, discard, or auto-cleanup call is used.")}</p>
+  return <div className="collection-page"><section className="panel camera-panel"><div className="section-heading"><div><p className="eyebrow">{t("Collector vision").toUpperCase()}</p><h2>{t("Camera preview")}</h2><p className="muted">{t("Frames are proxied through OpenRoboOps; robot addresses and credentials stay server-side.")}</p></div><button className="button small" onClick={loadPreviews}><Icon name="refresh" />{t("Refresh")}</button></div>
+    {previewError ? <div className="notice camera-error">{t("Camera preview unavailable")}: {previewError}</div> : previews.length ? <div className="camera-grid">{previews.map((preview) => <article className="camera-card" key={preview.channel}><div className="camera-frame"><Image src={preview.frame_url} alt={t(preview.label)} width={1280} height={720} unoptimized />{preview.stale && <span className="camera-stale">{t("Stale frame")}</span>}</div><div className="camera-meta"><span><strong>{t(preview.label)}</strong><small>{preview.captured_at ? `${t("Captured")} ${date(preview.captured_at)}` : t("Capture time unavailable")}</small></span><Badge tone={preview.stale ? "warning" : "success"}>{preview.stale ? t("Stale") : t("Live")}</Badge></div></article>)}</div> : <Empty>{t("No camera previews were reported by the collector.")}</Empty>}
+    {previews.some((preview) => preview.stale) && <p className="form-hint camera-hint">{t("Stale means the collector has not written a recent frame; it is not a live view.")}</p>}
+  </section><div className="two-column collection-layout"><section className="panel"><p className="eyebrow">{t("Local orchestration").toUpperCase()}</p><h2>{t("Start collection")}</h2><p className="muted">{t("Allocates local task/job IDs and preserves the collector UID. No vendor upload, discard, or auto-cleanup call is used.")}</p>
     <form className="form-stack" onSubmit={start}><label>{t("Task name")}<input name="name" placeholder="pick-and-place calibration" required minLength={2} /></label><label>{t("Planned duration")}<select name="duration" defaultValue="60"><option value="30">{t("30 seconds")}</option><option value="60">{t("1 minute")}</option><option value="300">{t("5 minutes")}</option><option value="900">{t("15 minutes")}</option></select></label><button className="button primary" disabled={busy || robot.observe_only || !robot.online}>{busy ? t("Starting…") : t("Start collection")}</button>{robot.observe_only && <p className="form-hint">{t("Disabled while this robot is observe-only.")}</p>}</form>
   </section><section className="panel"><div className="section-heading"><div><p className="eyebrow">{t("Sessions").toUpperCase()}</p><h2>{t("Recent collection jobs")}</h2></div><button className="icon-button" onClick={() => load()}><Icon name="refresh" /></button></div>
     {rows.length ? <div className="session-list">{rows.map((row) => <article key={row.id}><div><strong>{row.name}</strong><p className="mono">{row.record_uid ?? `${t("local job")} ${row.job_id}`}</p><small>{date(row.started_at)} · {row.planned_duration_seconds ?? t("manual")} {t("sec")}</small></div><div><Badge tone={row.status === "completed" ? "success" : row.status === "failed" ? "danger" : "info"}>{row.status}</Badge>{["starting", "recording", "stopping"].includes(row.status) && <button className="button small" onClick={() => stop(row.id)}>{t("Stop")}</button>}</div></article>)}</div> : <Empty>{t("No collection sessions yet.")}</Empty>}
-  </section></div>;
+  </section></div></div>;
 }
 
 function OperationsView({ robot, notify }: { robot: Robot; notify: (message: string) => void }) {

@@ -60,3 +60,45 @@ async def test_a2d_partial_telemetry_failure_keeps_reachable_robot_online(
     assert status.payload["vrActive"] is True
     assert status.payload["recording"] is False
     assert "battery status unavailable: collector rejected request" in status.payload["alerts"]
+
+
+@pytest.mark.asyncio
+async def test_a2d_camera_preview_metadata_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
+    adapter = A2DAdapter({})
+
+    async def fake_collector(_method: str, _path: str, _payload=None):
+        return {
+            "data": {
+                "head_color": "http://robot.internal/api/proxy_image?path=/private/frame.jpg",
+                "unexpected": "http://robot.internal/secret",
+            },
+            "meta": {"head_color": {"mtimeMs": 1_700_000_000_000, "ageMs": 250, "size": 42_000}},
+        }
+
+    monkeypatch.setattr(adapter, "_collector_request", fake_collector)
+
+    previews = await adapter.list_camera_previews()
+
+    assert len(previews) == 1
+    assert previews[0].channel == "head_color"
+    assert previews[0].label == "Head camera"
+    assert previews[0].version == "1700000000000"
+    assert not hasattr(previews[0], "source_url")
+
+
+@pytest.mark.asyncio
+async def test_a2d_camera_frame_rejects_collector_ssrf_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    adapter = A2DAdapter({})
+
+    @asynccontextmanager
+    async def fake_ssh():
+        yield FakeConnection()
+
+    async def fake_collector(_connection, _method: str, _path: str, _payload=None):
+        return {"data": {"head_color": "http://metadata.internal/latest"}}
+
+    monkeypatch.setattr(adapter, "_ssh", fake_ssh)
+    monkeypatch.setattr(adapter, "_collector_request_on_connection", fake_collector)
+
+    with pytest.raises(RuntimeError, match="unsafe camera preview URL"):
+        await adapter.read_camera_preview("head_color")
