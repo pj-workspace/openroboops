@@ -13,6 +13,7 @@ from typing import Any
 
 import asyncssh
 import httpx
+from websockets.asyncio.client import connect
 
 from .base import AdapterEpisode, AdapterStatus, ProgressCallback, RobotAdapter
 
@@ -99,6 +100,57 @@ class A2DAdapter(RobotAdapter):
             raise RuntimeError(str(data.get("msg") or "collector rejected request"))
         return data
 
+    async def _read_vr_activity(self) -> tuple[bool, dict[str, Any]]:
+        """Detect live PICO/VR input through a read-only rosbridge subscription."""
+        rosbridge_port = int(self.connection.get("rosbridge_port", 9090))
+        topic = str(self.connection.get("vr_topic", "/remote/vr_data"))
+        probe_timeout = float(self.connection.get("vr_probe_timeout_seconds", 1.0))
+        subscribe = json.dumps(
+            {
+                "op": "subscribe",
+                "topic": topic,
+                "id": "openroboops-vr-probe",
+                "queue_length": 1,
+                "throttle_rate": 0,
+            }
+        )
+
+        async with self._ssh() as connection:
+            listener = await connection.forward_local_port("127.0.0.1", 0, "127.0.0.1", rosbridge_port)
+            try:
+                local_port = listener.get_port()
+                async with connect(
+                    f"ws://127.0.0.1:{local_port}",
+                    open_timeout=2,
+                    close_timeout=1,
+                ) as websocket:
+                    await websocket.send(subscribe)
+                    loop = asyncio.get_running_loop()
+                    deadline = loop.time() + probe_timeout
+                    while (remaining := deadline - loop.time()) > 0:
+                        try:
+                            raw_message = await asyncio.wait_for(websocket.recv(), timeout=remaining)
+                        except TimeoutError:
+                            break
+                        if not isinstance(raw_message, str):
+                            continue
+                        message = json.loads(raw_message)
+                        if message.get("op") != "publish" or message.get("topic") != topic:
+                            continue
+                        vr_payload = message.get("msg")
+                        if not isinstance(vr_payload, dict):
+                            raise RuntimeError("rosbridge returned invalid VR telemetry")
+                        return True, {
+                            "topic": topic,
+                            "status": vr_payload.get("status"),
+                            "errCode": vr_payload.get("err_code"),
+                        }
+            finally:
+                listener.close()
+                await listener.wait_closed()
+
+        return False, {"topic": topic}
+
     async def probe(self) -> AdapterStatus:
         return await self.read_status()
 
@@ -119,18 +171,30 @@ class A2DAdapter(RobotAdapter):
                 raise RuntimeError(f"collector returned invalid {name} data")
             return name, value
 
+        vr_task = asyncio.create_task(self._read_vr_activity())
         values = await asyncio.gather(
             *(read_one(name, path) for name, path in endpoints.items()),
             return_exceptions=True,
         )
         payload: dict[str, Any] = {}
         errors: list[str] = []
+        warnings: list[str] = []
         for item in values:
             if isinstance(item, BaseException):
                 errors.append(str(item))
             else:
                 name, value = item
                 payload[name] = value
+        try:
+            vr_active, vr_status = await vr_task
+        except Exception:
+            payload["vrActive"] = None
+            warnings.append("PICO/VR activity is unknown; motion commands fail closed")
+        else:
+            payload["vrActive"] = vr_active
+            payload["vrStatus"] = vr_status
+            if vr_active:
+                warnings.append("PICO/VR input is active; motion commands are blocked")
 
         async with self._ssh() as connection:
             disk_result = await connection.run(
@@ -161,8 +225,7 @@ class A2DAdapter(RobotAdapter):
             "web": service_values[2] if len(service_values) > 2 else "unknown",
         }
         payload["recording"] = bool((payload.get("progress") or {}).get("job"))
-        payload["vrActive"] = None
-        payload["alerts"] = errors + (["VR activity is unknown; motion commands fail closed"] if not errors else [])
+        payload["alerts"] = errors + warnings
         return AdapterStatus(online=not errors, payload=payload, capabilities=A2D_CAPABILITIES)
 
     async def list_episodes(self) -> list[AdapterEpisode]:

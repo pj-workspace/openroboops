@@ -37,7 +37,10 @@
 - 已取得 60 秒独占 control lease；
 - 操作者确认本人在现场、工作区域已清空、物理急停触手可及。
 
-A2D adapter 当前将 VR 活跃状态建模为“未知”，因此真实运动命令会 fail closed。只有私有部署接入并验收可靠的 VR-idle 信号后，才具备进一步开放的前提。OpenRoboOps 永远不会关闭碰撞保护，也不暴露原始 WBC/MBC 发布接口。
+A2D adapter 通过服务端 SSH 隧道只读订阅 rosbridge 的 `/remote/vr_data`，探测
+PICO/VR 实时输入：收到实时消息即标记为活跃；探测成功但没有消息则标记为空闲；
+传输或消息格式异常仍为未知并 fail closed。OpenRoboOps 永远不会关闭碰撞保护，
+也不暴露原始 WBC/MBC 发布接口。
 
 ## 系统架构
 

@@ -51,9 +51,10 @@ remote SHA-256 tree and a local SHA-256 tree and requires an exact path/hash mat
 failure leaves the source directory unchanged and keeps the partial target for resume.
 No upload, discard, or cleanup endpoint is called.
 
-## Current motion boundary
+## PICO/VR activity boundary
 
-The public A2D adapter deliberately reports `vrActive` as unknown because there is no
-portable, verified signal in this repository. Consequently, movement-capable commands
-fail preflight. A private deployment must implement and field-accept a trustworthy
-idle signal before changing this boundary.
+The A2D adapter opens a server-side SSH tunnel to rosbridge and subscribes read-only
+to `/remote/vr_data` for a bounded interval. A valid live message sets `vrActive=true`;
+a successful subscription with no live message sets `vrActive=false`. Connection,
+timeout setup, or payload failures set `vrActive=null`, so movement-capable commands
+continue to fail closed. The browser never receives rosbridge access or SSH material.

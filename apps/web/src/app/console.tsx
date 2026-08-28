@@ -194,12 +194,14 @@ function Overview({ robot }: { robot: Robot }) {
   const collision = asObject(status.collisionProtection); const poses = asObject(status.resetPoses);
   const services = asObject(status.services); const bodyParams = asObject(status.bodyParams);
   const alerts = Array.isArray(status.alerts) ? status.alerts : [];
+  const vrActive = typeof status.vrActive === "boolean" ? status.vrActive : null;
   return <>
     <div className="metric-grid">
       <article className="metric"><span>{t("Battery")}</span><strong>{battery.available === false ? t("Unavailable") : `${text(battery.percent)}%`}</strong><small>{text(battery.statusText, bool(battery.charging) ? t("Charging") : t("Not charging"))}</small></article>
       <article className="metric"><span>{t("Data disk")}</span><strong>{bytes(disk.free)} {t("free")}</strong><small>{bytes(disk.used)} {t("used")} · {bytes(disk.total)} {t("of")}</small></article>
       <article className="metric"><span>{t("Collection stack")}</span><strong>{bool(asObject(status.stack).ready) ? t("Ready") : t("Not ready")}</strong><small>{bool(status.recording) ? t("Recording now") : t("Idle")}</small></article>
       <article className="metric"><span>{t("Collision protection")}</span><strong>{bool(collision.enabled) ? t("Enabled") : t("Not confirmed")}</strong><small>{t("Level")} {text(collision.level)}</small></article>
+      <article className="metric"><span>{t("PICO / VR")}</span><strong>{vrActive === true ? t("Active") : vrActive === false ? t("Idle") : t("Unknown")}</strong><small>{vrActive === true ? t("Live input detected") : vrActive === false ? t("No live input detected") : t("Detection unavailable")}</small></article>
     </div>
     <div className="two-column"><section className="panel">
       <p className="eyebrow">{t("Reset poses").toUpperCase()}</p><h2>{t("Arm readiness")}</h2>
@@ -208,7 +210,7 @@ function Overview({ robot }: { robot: Robot }) {
       {Object.keys(services).length ? Object.entries(services).map(([name, value]) => <div className="service-row" key={name}><span>{name}</span><Badge tone={value === "active" ? "success" : "warning"}>{text(value)}</Badge></div>) : <Empty>{t("No service telemetry reported.")}</Empty>}
     </section></div>
     <section className="panel"><div className="section-heading"><div><p className="eyebrow">{t("Alerts").toUpperCase()}</p><h2>{t("Active conditions")}</h2></div><Badge tone={alerts.length ? "danger" : "success"}>{alerts.length || t("Clear")}</Badge></div>
-      {alerts.length ? <div className="alert-list">{alerts.map((alert, index) => <div className="alert-item" key={index}>{text(alert)}</div>)}</div> : <Empty>{t("No active alerts reported by the adapter.")}</Empty>}
+      {alerts.length ? <div className="alert-list">{alerts.map((alert, index) => <div className="alert-item" key={index}>{t(text(alert))}</div>)}</div> : <Empty>{t("No active alerts reported by the adapter.")}</Empty>}
     </section>
     <section className="panel"><div className="section-heading"><div><p className="eyebrow">{t("Body parameters").toUpperCase()}</p><h2>{t("Reported configuration")}</h2></div><Badge>{Object.keys(bodyParams).length} {t("values")}</Badge></div>
       {Object.keys(bodyParams).length ? <div className="parameter-grid">{Object.entries(bodyParams).map(([name, value]) => <div key={name}><span>{name}</span><strong>{text(value)}</strong></div>)}</div> : <Empty>{t("No body parameters reported.")}</Empty>}

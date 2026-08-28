@@ -37,7 +37,11 @@ Motion-capable commands fail closed unless all of these are positively true:
 - a 60-second exclusive control lease is active;
 - the operator confirms physical presence and a clear work area.
 
-The A2D adapter currently reports VR activity as unknown, so its motion commands remain fail-closed until a deployment supplies and validates a trustworthy VR-idle signal. OpenRoboOps never disables collision protection and does not expose raw WBC/MBC publishing endpoints.
+The A2D adapter detects live PICO/VR input by opening a server-side SSH tunnel to
+rosbridge and subscribing read-only to `/remote/vr_data`. A live message marks VR as
+active; a successful probe with no message marks it idle; any transport or payload
+failure remains unknown and fail-closed. OpenRoboOps never disables collision
+protection and does not expose raw WBC/MBC publishing endpoints.
 
 ## Architecture
 
