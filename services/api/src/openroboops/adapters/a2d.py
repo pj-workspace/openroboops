@@ -52,7 +52,7 @@ LIVE_HEAD_PREVIEW_DIRECTORIES = (
     "/dev/shm/hmi/head",
 )
 
-LIVE_HEAD_STREAM_READER = r'''import glob, os, sys, time
+LIVE_HEAD_STREAM_READER = r"""import glob, os, sys, time
 import cv2
 last = ""
 while True:
@@ -82,7 +82,7 @@ while True:
                     sys.stdout.buffer.flush()
                     last = path
     time.sleep(0.20)
-'''
+"""
 
 COMMAND_ENDPOINTS: dict[str, tuple[str, str]] = {
     "save_reset_pose": ("POST", "/api/custom_arm_reset_pose"),
