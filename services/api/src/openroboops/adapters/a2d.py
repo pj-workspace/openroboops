@@ -68,7 +68,7 @@ output = os.fdopen(3, "wb", buffering=0)
 last_timestamp = None
 next_frame_at = 0.0
 frame_interval = 1.0 / 10.0
-target_width = 600 if topic == "/camera/head_color" else 480
+target_width = 520 if topic == "/camera/head_color" else 420
 try:
     while True:
         packet = camera.get_latest_packet(topic)
@@ -98,7 +98,7 @@ try:
         encoded_ok, encoded = cv2.imencode(
             ".jpg",
             image,
-            [int(cv2.IMWRITE_JPEG_QUALITY), 45],
+            [int(cv2.IMWRITE_JPEG_QUALITY), 42],
         )
         if not encoded_ok:
             time.sleep(0.01)
