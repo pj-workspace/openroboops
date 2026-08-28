@@ -63,6 +63,10 @@ Alembic upgrades run before the API starts. Back up both PostgreSQL and the conf
 episode target directory. Source data on the robot is outside OpenRoboOps backup scope
 and is never automatically deleted.
 
+PostgreSQL 18 stores versioned cluster directories below `/var/lib/postgresql`; the
+Compose volume intentionally mounts that parent path for safe future `pg_upgrade`
+workflows.
+
 ## Health and logs
 
 ```bash
