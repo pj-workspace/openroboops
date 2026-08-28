@@ -50,6 +50,8 @@ from ..schemas import (
     CollectionStartRequest,
     CommandRequest,
     CommandResponse,
+    EpisodeDeleteRequest,
+    EpisodeDeleteResponse,
     EpisodeResponse,
     LeaseRequest,
     LeaseResponse,
@@ -331,6 +333,110 @@ async def queue_sync(episode_id: str, db: DB, user: MutatingAdmin) -> SyncJob:
     return job
 
 
+@router.get("/episodes/{episode_id}/preview/{channel}", response_class=Response)
+async def read_episode_preview(episode_id: str, channel: str, db: DB, _: Admin) -> Response:
+    episode = await db.get(Episode, episode_id)
+    if episode is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="episode not found")
+    robot = await db.get(Robot, episode.robot_id)
+    if robot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="robot not found")
+    try:
+        frame = await create_adapter(robot.adapter_type, robot.connection).read_episode_preview(episode.uid, channel)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("episode preview failed for %s channel %s: %s", episode.id, channel, exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="episode preview is unavailable") from exc
+    return Response(
+        content=frame.content,
+        media_type=frame.media_type,
+        headers={"Cache-Control": "private, max-age=30", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.post("/episodes/{episode_id}/delete", response_model=EpisodeDeleteResponse)
+async def delete_episode(
+    episode_id: str,
+    payload: EpisodeDeleteRequest,
+    db: DB,
+    user: MutatingAdmin,
+) -> EpisodeDeleteResponse:
+    episode = await db.get(Episode, episode_id)
+    if episode is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="episode not found")
+    if payload.confirm_uid != episode.uid:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="confirmation UID does not match")
+    if not verify_password(user.password_hash, payload.password):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="administrator password is invalid")
+    active_collection = await db.scalar(
+        select(CollectionSession.id).where(
+            CollectionSession.robot_id == episode.robot_id,
+            CollectionSession.record_uid == episode.uid,
+            CollectionSession.status.in_({"starting", "recording", "stopping"}),
+        )
+    )
+    if active_collection is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stop the collection before deleting it")
+    active_sync = await db.scalar(
+        select(SyncJob.id).where(
+            SyncJob.episode_id == episode.id,
+            SyncJob.status.in_({"queued", "running", "verifying"}),
+        )
+    )
+    if active_sync is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="cancel the active sync before deleting data")
+    if episode.sync_status == "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="deleting synchronized central copies is not supported yet; robot source data was preserved",
+        )
+    robot = await db.get(Robot, episode.robot_id)
+    if robot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="robot not found")
+    uid = episode.uid
+    try:
+        result = await create_adapter(robot.adapter_type, robot.connection).discard_episode(uid)
+    except Exception as exc:
+        await audit(
+            db,
+            action="episode.delete",
+            user_id=user.id,
+            robot_id=robot.id,
+            target=uid,
+            result_payload={"error": str(exc)},
+            status_value="failed",
+        )
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    matching_collections = (
+        await db.scalars(
+            select(CollectionSession).where(
+                CollectionSession.robot_id == episode.robot_id,
+                CollectionSession.record_uid == uid,
+            )
+        )
+    ).all()
+    for collection in matching_collections:
+        collection.review_status = "deleted"
+        collection.reviewed_at = utcnow()
+    await db.delete(episode)
+    await audit(
+        db,
+        action="episode.delete",
+        user_id=user.id,
+        robot_id=robot.id,
+        target=uid,
+        request_payload={"confirmed_uid": uid},
+        result_payload=result,
+    )
+    await db.commit()
+    return EpisodeDeleteResponse(deleted=True, uid=uid)
+
+
 @router.get("/sync-jobs", response_model=list[SyncJobResponse])
 async def list_sync_jobs(db: DB, _: Admin, robot_id: str | None = None) -> list[SyncJob]:
     query = select(SyncJob)
@@ -597,9 +703,7 @@ async def force_stop_collection(collection_id: str, db: DB, user: MutatingAdmin)
     if robot is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="robot not found")
     try:
-        result = await create_adapter(robot.adapter_type, robot.connection).force_stop_collection(
-            collection.record_uid
-        )
+        result = await create_adapter(robot.adapter_type, robot.connection).force_stop_collection(collection.record_uid)
         collection.status = "stopped"
         collection.stopped_at = utcnow()
         await audit(
@@ -650,7 +754,10 @@ async def read_collection_preview(collection_id: str, channel: str, db: DB, _: A
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except Exception as exc:
         logger.warning("collection preview failed for %s channel %s: %s", collection.id, channel, exc)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="collection preview is unavailable") from exc
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="collection preview is unavailable",
+        ) from exc
     return Response(
         content=frame.content,
         media_type=frame.media_type,
@@ -682,9 +789,7 @@ async def decide_collection(
         if not payload.password or not verify_password(user.password_hash, payload.password):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="administrator password is invalid")
         try:
-            result = await create_adapter(robot.adapter_type, robot.connection).discard_episode(
-                collection.record_uid
-            )
+            result = await create_adapter(robot.adapter_type, robot.connection).discard_episode(collection.record_uid)
         except Exception as exc:
             await audit(
                 db,

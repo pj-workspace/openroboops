@@ -228,6 +228,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/episodes/{episode_id}/preview/{channel}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Episode Preview */
+        get: operations["read_episode_preview_api_v1_episodes__episode_id__preview__channel__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/episodes/{episode_id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete Episode */
+        post: operations["delete_episode_api_v1_episodes__episode_id__delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sync-jobs": {
         parameters: {
             query?: never;
@@ -609,6 +643,20 @@ export interface components {
             started_at: string | null;
             /** Finished At */
             finished_at: string | null;
+        };
+        /** EpisodeDeleteRequest */
+        EpisodeDeleteRequest: {
+            /** Password */
+            password: string;
+            /** Confirm Uid */
+            confirm_uid: string;
+        };
+        /** EpisodeDeleteResponse */
+        EpisodeDeleteResponse: {
+            /** Deleted */
+            deleted: boolean;
+            /** Uid */
+            uid: string;
         };
         /** EpisodeResponse */
         EpisodeResponse: {
@@ -1371,6 +1419,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SyncJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_episode_preview_api_v1_episodes__episode_id__preview__channel__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                episode_id: string;
+                channel: string;
+            };
+            cookie?: {
+                openroboops_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_episode_api_v1_episodes__episode_id__delete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                episode_id: string;
+            };
+            cookie?: {
+                openroboops_session?: string | null;
+                openroboops_csrf?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EpisodeDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeDeleteResponse"];
                 };
             };
             /** @description Validation Error */

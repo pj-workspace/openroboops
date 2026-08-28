@@ -81,6 +81,21 @@ test("opens the observe-only robot registration flow", async ({ page }) => {
   await expect(page.getByLabel("Private key file")).toBeVisible();
 });
 
+test("manages and safely confirms deletion from the data page", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Data" }).click();
+  await page.getByRole("button", { name: "Manage" }).click();
+
+  const manager = page.getByRole("dialog", { name: "Episode details" });
+  await expect(manager.getByText("historical-episode", { exact: true })).toBeVisible();
+  await expect(manager.locator(".camera-card")).toHaveCount(3);
+  await manager.getByRole("button", { name: "Delete data" }).click();
+  await expect(manager.getByRole("button", { name: "Permanently delete" })).toBeDisabled();
+  await manager.getByLabel("Confirm UID").fill("historical-episode");
+  await manager.getByLabel("Administrator password").fill("correct-horse-battery");
+  await expect(manager.getByRole("button", { name: "Permanently delete" })).toBeEnabled();
+});
+
 test("switches to Chinese and persists the language preference", async ({ page }) => {
   await page.goto("/");
   await page.getByTitle("Switch language").click();

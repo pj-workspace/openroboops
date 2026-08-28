@@ -106,6 +106,16 @@ class EpisodeResponse(ApiModel):
     last_scanned_at: datetime
 
 
+class EpisodeDeleteRequest(ApiModel):
+    password: str = Field(max_length=256)
+    confirm_uid: str = Field(max_length=160)
+
+
+class EpisodeDeleteResponse(ApiModel):
+    deleted: bool
+    uid: str
+
+
 class CollectionStartRequest(ApiModel):
     name: str = Field(min_length=2, max_length=180)
     planned_duration_seconds: int | None = Field(default=None, ge=10, le=3600)

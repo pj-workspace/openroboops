@@ -1046,6 +1046,160 @@
         }
       }
     },
+    "/api/v1/episodes/{episode_id}/preview/{channel}": {
+      "get": {
+        "summary": "Read Episode Preview",
+        "operationId": "read_episode_preview_api_v1_episodes__episode_id__preview__channel__get",
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Episode Id"
+            }
+          },
+          {
+            "name": "channel",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Channel"
+            }
+          },
+          {
+            "name": "openroboops_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Openroboops Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/episodes/{episode_id}/delete": {
+      "post": {
+        "summary": "Delete Episode",
+        "operationId": "delete_episode_api_v1_episodes__episode_id__delete_post",
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Episode Id"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          },
+          {
+            "name": "openroboops_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Openroboops Session"
+            }
+          },
+          {
+            "name": "openroboops_csrf",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Openroboops Csrf"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EpisodeDeleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpisodeDeleteResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sync-jobs": {
       "get": {
         "summary": "List Sync Jobs",
@@ -2658,6 +2812,44 @@
           "finished_at"
         ],
         "title": "CommandResponse"
+      },
+      "EpisodeDeleteRequest": {
+        "properties": {
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Password"
+          },
+          "confirm_uid": {
+            "type": "string",
+            "maxLength": 160,
+            "title": "Confirm Uid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "password",
+          "confirm_uid"
+        ],
+        "title": "EpisodeDeleteRequest"
+      },
+      "EpisodeDeleteResponse": {
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted"
+          },
+          "uid": {
+            "type": "string",
+            "title": "Uid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deleted",
+          "uid"
+        ],
+        "title": "EpisodeDeleteResponse"
       },
       "EpisodeResponse": {
         "properties": {

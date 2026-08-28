@@ -108,6 +108,19 @@ function Empty({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }
 
+function LoadingLabel({ children }: { children: ReactNode }) {
+  return <span className="loading-label"><span className="button-spinner" aria-hidden="true" />{children}</span>;
+}
+
+function EpisodePreviewCard({ src, label }: { src: string; label: string }) {
+  const { t } = useI18n();
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  return <article className="camera-card"><div className="camera-frame">
+    {state !== "ready" && <span className="camera-unavailable">{state === "loading" ? <LoadingLabel>{t("Loading preview…")}</LoadingLabel> : t("Preview unavailable")}</span>}
+    <Image src={src} alt={label} width={1280} height={720} unoptimized onLoad={() => setState("ready")} onError={() => setState("error")} style={state === "error" ? { display: "none" } : undefined} />
+  </div><div className="camera-meta"><strong>{label}</strong></div></article>;
+}
+
 function AuthGate({ onReady }: { onReady: (user: User) => void }) {
   const { t } = useI18n();
   const [mode, setMode] = useState<"loading" | "setup" | "login">("loading");
@@ -245,6 +258,10 @@ function DataView({ robot, notify }: { robot: Robot; notify: (message: string) =
   const { t } = useI18n();
   const [episodes, setEpisodes] = useState<Episode[]>([]); const [jobs, setJobs] = useState<SyncJob[]>([]);
   const [busy, setBusy] = useState(false); const [filter, setFilter] = useState("all");
+  const [managedId, setManagedId] = useState(""); const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deletePassword, setDeletePassword] = useState(""); const [deleteUid, setDeleteUid] = useState("");
+  const [deleting, setDeleting] = useState(false); const [syncingId, setSyncingId] = useState("");
+  const [cancellingId, setCancellingId] = useState("");
   const load = useCallback(async () => {
     const [episodeRows, syncRows] = await Promise.all([api<Episode[]>(`/api/v1/robots/${robot.id}/episodes`), api<SyncJob[]>(`/api/v1/sync-jobs?robot_id=${robot.id}`)]);
     setEpisodes(episodeRows); setJobs(syncRows);
@@ -255,17 +272,38 @@ function DataView({ robot, notify }: { robot: Robot; notify: (message: string) =
     load().catch((error) => notify(error.message));
   }, [load, notify]);
   async function scan() { setBusy(true); try { setEpisodes(await post<Episode[]>(`/api/v1/robots/${robot.id}/episodes/scan`)); notify("Episode index refreshed from meta_info.json."); } catch (error) { notify(error instanceof Error ? error.message : "Scan failed"); } finally { setBusy(false); } }
-  async function sync(episode: Episode) { try { await post(`/api/v1/episodes/${episode.id}/sync`); notify(`Sync queued for ${episode.uid}. Source data will not be deleted.`); await load(); } catch (error) { notify(error instanceof Error ? error.message : "Sync failed"); } }
-  async function cancel(job: SyncJob) { try { await post(`/api/v1/sync-jobs/${job.id}/cancel`); notify("Queued sync cancelled. Source and target data were left untouched."); await load(); } catch (error) { notify(error instanceof Error ? error.message : "Cancellation failed"); } }
+  async function sync(episode: Episode) { setSyncingId(episode.id); try { await post(`/api/v1/episodes/${episode.id}/sync`); notify(`Sync queued for ${episode.uid}. Source data will not be deleted.`); await load(); } catch (error) { notify(error instanceof Error ? error.message : "Sync failed"); } finally { setSyncingId(""); } }
+  async function cancel(job: SyncJob) { setCancellingId(job.id); try { await post(`/api/v1/sync-jobs/${job.id}/cancel`); notify("Queued sync cancelled. Source and target data were left untouched."); await load(); } catch (error) { notify(error instanceof Error ? error.message : "Cancellation failed"); } finally { setCancellingId(""); } }
+  function closeManager() { setManagedId(""); setDeleteArmed(false); setDeletePassword(""); setDeleteUid(""); }
+  async function deleteEpisode(episode: Episode) {
+    setDeleting(true);
+    try {
+      await post(`/api/v1/episodes/${episode.id}/delete`, { password: deletePassword, confirm_uid: deleteUid });
+      notify(t("Episode data was deleted and audited."));
+      closeManager();
+      await load();
+    } catch (error) { notify(error instanceof Error ? error.message : t("Deletion failed")); }
+    finally { setDeleting(false); }
+  }
   const visible = episodes.filter((row) => filter === "all" || row.sync_status === filter || row.validation_status === filter || (filter === "aligned" && row.aligned));
-  return <section className="panel table-panel"><div className="section-heading"><div><p className="eyebrow">{t("Dataset catalog").toUpperCase()}</p><h2>{t("Episodes")}</h2><p className="muted">{t("Indexed directly from each episode's meta_info.json.")}</p></div><div className="actions"><select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">{t("All episodes")}</option><option value="aligned">{t("Aligned")}</option><option value="valid">{t("Valid")}</option><option value="warning">{t("Warnings")}</option><option value="completed">{t("Synced")}</option><option value="not_synced">{t("Not synced")}</option></select><button className="button" onClick={scan} disabled={busy}><Icon name="refresh" />{busy ? t("Scanning…") : t("Rescan")}</button></div></div>
+  const managed = episodes.find((episode) => episode.id === managedId);
+  const managedJob = managed ? jobs.find((item) => item.episode_id === managed.id && ["queued", "running", "verifying"].includes(item.status)) : undefined;
+  return <><section className="panel table-panel"><div className="section-heading"><div><p className="eyebrow">{t("Dataset catalog").toUpperCase()}</p><h2>{t("Episodes")}</h2><p className="muted">{t("Indexed directly from each episode's meta_info.json.")}</p></div><div className="actions"><select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">{t("All episodes")}</option><option value="aligned">{t("Aligned")}</option><option value="valid">{t("Valid")}</option><option value="warning">{t("Warnings")}</option><option value="completed">{t("Synced")}</option><option value="not_synced">{t("Not synced")}</option></select><button className="button" onClick={scan} disabled={busy}>{busy ? <LoadingLabel>{t("Scanning…")}</LoadingLabel> : <><Icon name="refresh" />{t("Rescan")}</>}</button></div></div>
     {visible.length ? <div className="table-wrap"><table><thead><tr><th>{t("Episode")}</th><th>{t("Task")}</th><th>{t("Channels")}</th><th>{t("Size / duration")}</th><th>{t("Quality")}</th><th>{t("Sync")}</th><th /></tr></thead><tbody>{visible.map((episode) => {
       const metadata = asObject(episode.metadata); const job = jobs.find((item) => item.episode_id === episode.id && ["queued", "running", "verifying"].includes(item.status));
       const inspection = asObject(metadata._openroboops); const fileTree = Array.isArray(inspection.file_tree) ? inspection.file_tree : []; const missing = Array.isArray(inspection.missing_items) ? inspection.missing_items : [];
       const capturedAt = episodeCapturedAt(metadata);
-      return <tr key={episode.id}><td><strong className="mono">{episode.uid}</strong><small>{t("Collected")} {capturedAt ? date(capturedAt) : t("Unknown")}</small><small>{t("Last scanned")} {date(episode.last_scanned_at)}</small>{fileTree.length > 0 && <details className="file-tree"><summary>{fileTree.length} {t("files")}</summary>{fileTree.slice(0, 40).map((entry, index) => <span key={index}>{text(asObject(entry).path)}</span>)}{fileTree.length > 40 && <span>…{t("and {count} more", { count: fileTree.length - 40 })}</span>}</details>}</td><td>{text(metadata.text, text(metadata.task_id))}</td><td><div className="chips">{episode.channels.map((channel) => <span key={channel}>{channel}</span>)}</div></td><td>{bytes(episode.file_size)}<small>{Math.round(episode.duration_seconds)} {t("sec")}</small></td><td><Badge tone={episode.validation_status === "valid" ? "success" : "warning"}>{episode.validation_status}</Badge><small>{episode.aligned ? t("aligned") : t("not aligned")}</small>{missing.length > 0 && <small className="warning-text">{t("Missing")}: {missing.map(String).join(", ")}</small>}</td><td>{job ? <><Badge tone="info">{job.status} {job.progress}%</Badge><div className="progress"><span style={{ width: `${job.progress}%` }} /></div></> : <Badge tone={episode.sync_status === "completed" ? "success" : "neutral"}>{episode.sync_status}</Badge>}</td><td>{job?.status === "queued" ? <button className="button small" onClick={() => cancel(job)}>{t("Cancel")}</button> : <button className="button small" onClick={() => sync(episode)} disabled={Boolean(job)}>{t("Sync")}</button>}</td></tr>;
+      return <tr key={episode.id}><td><strong className="mono">{episode.uid}</strong><small>{t("Collected")} {capturedAt ? date(capturedAt) : t("Unknown")}</small><small>{t("Last scanned")} {date(episode.last_scanned_at)}</small>{fileTree.length > 0 && <details className="file-tree"><summary>{fileTree.length} {t("files")}</summary>{fileTree.slice(0, 40).map((entry, index) => <span key={index}>{text(asObject(entry).path)}</span>)}{fileTree.length > 40 && <span>…{t("and {count} more", { count: fileTree.length - 40 })}</span>}</details>}</td><td>{text(metadata.text, text(metadata.task_id))}</td><td><div className="chips">{episode.channels.map((channel) => <span key={channel}>{channel}</span>)}</div></td><td>{bytes(episode.file_size)}<small>{Math.round(episode.duration_seconds)} {t("sec")}</small></td><td><Badge tone={episode.validation_status === "valid" ? "success" : "warning"}>{episode.validation_status}</Badge><small>{episode.aligned ? t("aligned") : t("not aligned")}</small>{missing.length > 0 && <small className="warning-text">{t("Missing")}: {missing.map(String).join(", ")}</small>}</td><td>{job ? <><Badge tone="info">{job.status} {job.progress}%</Badge><div className="progress"><span style={{ width: `${job.progress}%` }} /></div></> : <Badge tone={episode.sync_status === "completed" ? "success" : "neutral"}>{episode.sync_status}</Badge>}</td><td><div className="row-actions"><button className="button small" onClick={() => setManagedId(episode.id)}>{t("Manage")}</button>{job?.status === "queued" ? <button className="button small" onClick={() => cancel(job)} disabled={cancellingId === job.id}>{cancellingId === job.id ? <LoadingLabel>{t("Cancelling…")}</LoadingLabel> : t("Cancel")}</button> : <button className="button small" onClick={() => sync(episode)} disabled={Boolean(job) || episode.sync_status === "completed" || syncingId === episode.id}>{syncingId === episode.id ? <LoadingLabel>{t("Syncing…")}</LoadingLabel> : t("Sync")}</button>}</div></td></tr>;
     })}</tbody></table></div> : <Empty>{t("No episodes match this filter.")}</Empty>}
-  </section>;
+  </section>{managed && <div className="modal-backdrop" onMouseDown={closeManager}><section className="modal dataset-manager" role="dialog" aria-modal="true" aria-labelledby="dataset-manager-title" onMouseDown={(event) => event.stopPropagation()}>
+    <div className="section-heading"><div><p className="eyebrow">{t("Dataset management").toUpperCase()}</p><h2 id="dataset-manager-title">{t("Episode details")}</h2><p className="mono muted">{managed.uid}</p></div><button className="icon-button" onClick={closeManager}>×</button></div>
+    <div className="review-summary"><span><small>{t("Size")}</small><strong>{bytes(managed.file_size)}</strong></span><span><small>{t("Duration")}</small><strong>{Math.round(managed.duration_seconds)} {t("sec")}</strong></span><span><small>{t("Quality")}</small><strong>{managed.validation_status}</strong></span><span><small>{t("Sync")}</small><strong>{managedJob?.status ?? managed.sync_status}</strong></span></div>
+    <div className="camera-grid review-camera-grid">{cameraPreviewSlots.map((slot) => <EpisodePreviewCard key={`${managed.id}-${slot.channel}`} src={`/api/v1/episodes/${managed.id}/preview/${slot.channel}?v=${encodeURIComponent(managed.last_scanned_at)}`} label={t(slot.label)} />)}</div>
+    <div className="review-actions"><button className="button" onClick={() => sync(managed)} disabled={Boolean(managedJob) || managed.sync_status === "completed" || syncingId === managed.id}>{syncingId === managed.id ? <LoadingLabel>{t("Syncing…")}</LoadingLabel> : t("Sync")}</button><button className="button danger-button" onClick={() => setDeleteArmed(true)} disabled={Boolean(managedJob) || managed.sync_status === "completed" || deleting}>{t("Delete data")}</button></div>
+    {managedJob && <div className="notice">{t("Cancel the active sync before deleting data.")}</div>}
+    {managed.sync_status === "completed" && <div className="notice">{t("Central synchronized copies cannot be deleted in v0.1.")}</div>}
+    {deleteArmed && <div className="delete-confirm"><div className="notice danger-note">{t("This permanently deletes the robot-side source data. Type the full UID and administrator password to continue.")}</div><label>{t("Confirm UID")}<input value={deleteUid} onChange={(event) => setDeleteUid(event.target.value)} placeholder={managed.uid} /></label><label>{t("Administrator password")}<input type="password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} autoComplete="current-password" /></label><div className="actions"><button className="button" onClick={() => setDeleteArmed(false)} disabled={deleting}>{t("Cancel")}</button><button className="button danger-button" onClick={() => deleteEpisode(managed)} disabled={deleteUid !== managed.uid || !deletePassword || deleting}>{deleting ? <LoadingLabel>{t("Deleting…")}</LoadingLabel> : t("Permanently delete")}</button></div></div>}
+  </section></div>}</>;
 }
 
 function CollectionView({ robot, notify }: { robot: Robot; notify: (message: string) => void }) {

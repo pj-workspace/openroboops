@@ -116,6 +116,26 @@ def test_simulator_end_to_end() -> None:
         assert cancelled.status_code == 200
         assert cancelled.json()["status"] == "cancelled"
 
+        preview = client.get(f"/api/v1/episodes/{episode_id}/preview/head_color")
+        assert preview.status_code == 409
+
+        rejected_episode_delete = client.post(
+            f"/api/v1/episodes/{episode_id}/delete",
+            headers=headers,
+            json={"password": "correct-horse-battery", "confirm_uid": "wrong-uid"},
+        )
+        assert rejected_episode_delete.status_code == 409
+
+        episode_uid = scan.json()[0]["uid"]
+        deleted_episode = client.post(
+            f"/api/v1/episodes/{episode_id}/delete",
+            headers=headers,
+            json={"password": "correct-horse-battery", "confirm_uid": episode_uid},
+        )
+        assert deleted_episode.status_code == 200
+        assert deleted_episode.json() == {"deleted": True, "uid": episode_uid}
+        assert all(item["id"] != episode_id for item in client.get(f"/api/v1/robots/{robot_id}/episodes").json())
+
         lease = client.post(
             f"/api/v1/robots/{robot_id}/control-leases",
             headers=headers,

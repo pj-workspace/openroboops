@@ -153,6 +153,10 @@ label { display: grid; gap: 7px; color: #9ca6af; font-size: 10px; font-weight: 6
 .review-summary small { margin-bottom: 7px; font-size: 9px; }
 .review-camera-grid .camera-frame img { position: relative; z-index: 1; }
 .review-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.dataset-manager { width: min(1040px, 100%); }
+.loading-label { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.button-spinner { width: 12px; height: 12px; flex: 0 0 auto; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
 .danger-button { border-color: #784047; color: #f1888e; }
 .delete-confirm { display: grid; gap: 12px; padding-top: 16px; border-top: 1px solid var(--line); }
 .session-list, .audit-list { display: grid; }
