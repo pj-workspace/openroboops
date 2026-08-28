@@ -53,8 +53,9 @@ No upload, discard, or cleanup endpoint is called.
 
 ## PICO/VR activity boundary
 
-The A2D adapter opens a server-side SSH tunnel to rosbridge and subscribes read-only
-to `/remote/vr_data` for a bounded interval. A valid live message sets `vrActive=true`;
-a successful subscription with no live message sets `vrActive=false`. Connection,
-timeout setup, or payload failures set `vrActive=null`, so movement-capable commands
-continue to fail closed. The browser never receives rosbridge access or SSH material.
+The A2D adapter performs a bounded, read-only SSH check of `pico_streamer`, its UDP
+listener, and a short CPU-tick delta. Positive process activity sets `vrActive=true`.
+Every absent, unreadable, or inconclusive result sets `vrActive=null`, so this detector
+can block movement but can never authorize it. The adapter deliberately avoids polling
+rosbridge because some vendor builds do not reclaim short-lived WebSocket connections.
+The browser never receives robot ports or SSH material.
