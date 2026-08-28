@@ -46,7 +46,11 @@ async def test_a2d_partial_telemetry_failure_keeps_reachable_robot_online(
     async def fake_collector(_connection, _method: str, path: str, _payload=None):
         if path == "/api/custom_battery":
             raise RuntimeError("collector rejected request")
-        return {"data": {"job": None} if path == "/api/custom_progress" else {}}
+        if path == "/api/custom_progress":
+            return {"data": {"job": {"uid": "upload-only"}}}
+        if path == "/api/custom_stack_ready":
+            return {"data": {"ready": True, "recordTaskStatus": 400}}
+        return {"data": {}}
 
     async def fake_vr_activity(_connection):
         return True, {"detector": "pico-process-activity", "cpuTicksDelta": 8}
@@ -61,6 +65,35 @@ async def test_a2d_partial_telemetry_failure_keeps_reachable_robot_online(
     assert status.payload["vrActive"] is True
     assert status.payload["recording"] is False
     assert "battery status unavailable: collector rejected request" in status.payload["alerts"]
+
+
+@pytest.mark.asyncio
+async def test_a2d_uses_recorder_status_instead_of_upload_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter = A2DAdapter({})
+
+    @asynccontextmanager
+    async def fake_ssh():
+        yield FakeConnection()
+
+    async def fake_collector(_connection, _method: str, path: str, _payload=None):
+        if path == "/api/custom_stack_ready":
+            return {"data": {"ready": True, "recordTaskStatus": 200}}
+        if path == "/api/custom_progress":
+            return {"data": {"job": {}}}
+        return {"data": {}}
+
+    async def fake_vr_activity(_connection):
+        return False, {"detector": "pico-process-activity", "cpuTicksDelta": 0}
+
+    monkeypatch.setattr(adapter, "_ssh", fake_ssh)
+    monkeypatch.setattr(adapter, "_collector_request_on_connection", fake_collector)
+    monkeypatch.setattr(adapter, "_read_vr_activity_on_connection", fake_vr_activity)
+
+    status = await adapter.read_status()
+
+    assert status.payload["recording"] is True
 
 
 @pytest.mark.asyncio

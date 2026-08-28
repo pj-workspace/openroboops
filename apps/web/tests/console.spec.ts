@@ -40,6 +40,7 @@ test.beforeEach(async ({ page }) => {
     if (url.pathname.endsWith("/episodes")) return route.fulfill({ json: [] });
     if (url.pathname === "/api/v1/sync-jobs") return route.fulfill({ json: [] });
     if (url.pathname.endsWith("/collections")) return route.fulfill({ json: [] });
+    if (url.pathname.endsWith("/camera-previews")) return route.fulfill({ json: [] });
     if (url.pathname === "/api/v1/commands") return route.fulfill({ json: [] });
     if (url.pathname === "/api/v1/audit") return route.fulfill({ json: [] });
     return route.fulfill({ status: 404, json: { detail: "not mocked" } });
@@ -73,4 +74,16 @@ test("switches to Chinese and persists the language preference", async ({ page }
 
   await page.reload();
   await expect(page.getByText("机械臂就绪状态")).toBeVisible();
+});
+
+test("keeps all three camera slots when no preview is available", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Collection" }).click();
+
+  const cameraGrid = page.locator(".camera-grid");
+  await expect(cameraGrid.locator(".camera-card")).toHaveCount(3);
+  await expect(cameraGrid.getByText("Left hand camera")).toBeVisible();
+  await expect(cameraGrid.getByText("Head camera")).toBeVisible();
+  await expect(cameraGrid.getByText("Right hand camera")).toBeVisible();
+  await expect(cameraGrid.getByText("No live frame")).toHaveCount(3);
 });

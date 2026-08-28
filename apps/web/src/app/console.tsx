@@ -28,11 +28,11 @@ const views: Array<{ id: View; label: string }> = [
   { id: "audit", label: "Audit" },
 ];
 
-const cameraPreviewOrder = new Map([
-  ["hand_left_color", 0],
-  ["head_color", 1],
-  ["hand_right_color", 2],
-]);
+const cameraPreviewSlots = [
+  { channel: "hand_left_color", label: "Left hand camera" },
+  { channel: "head_color", label: "Head camera" },
+  { channel: "hand_right_color", label: "Right hand camera" },
+] as const;
 
 const safeCommands = [
   ["clear_fault", "Clear faults", "Clear recoverable faults without motion."],
@@ -274,9 +274,15 @@ function CollectionView({ robot, notify }: { robot: Robot; notify: (message: str
   }, [loadPreviews]);
   async function start(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); setBusy(true); try { await post(`/api/v1/robots/${robot.id}/collections`, { name: String(form.get("name")), planned_duration_seconds: Number(form.get("duration")) }); notify("Collection started and the collector UID was persisted."); await Promise.all([load(), loadPreviews()]); event.currentTarget.reset(); } catch (error) { notify(error instanceof Error ? error.message : "Collection failed"); } finally { setBusy(false); } }
   async function stop(id: string) { try { await post(`/api/v1/collections/${id}/stop`); notify("Collection stopped; indexing will resume automatically."); await load(); } catch (error) { notify(error instanceof Error ? error.message : "Stop failed"); } }
+  const previewsByChannel = new Map(previews.map((preview) => [preview.channel, preview]));
   return <div className="collection-page"><section className="panel camera-panel"><div className="section-heading"><div><p className="eyebrow">{t("Collector vision").toUpperCase()}</p><h2>{t("Camera preview")}</h2><p className="muted">{t("Frames are proxied through OpenRoboOps; robot addresses and credentials stay server-side.")}</p></div><button className="button small" onClick={loadPreviews}><Icon name="refresh" />{t("Refresh")}</button></div>
-    {previewError ? <div className="notice camera-error">{t("Camera preview unavailable")}: {previewError}</div> : previews.length ? <div className="camera-grid">{[...previews].sort((left, right) => (cameraPreviewOrder.get(left.channel) ?? 99) - (cameraPreviewOrder.get(right.channel) ?? 99)).map((preview) => <article className="camera-card" key={preview.channel}><div className="camera-frame">{preview.stream_url || !preview.stale ? <Image src={preview.stream_url ?? preview.frame_url} alt={t(preview.label)} width={1280} height={720} unoptimized /> : <span className="camera-unavailable">{t("No live frame")}</span>}{preview.stale && !preview.stream_url && <span className="camera-stale">{t("Stale frame")}</span>}</div><div className="camera-meta"><span><strong>{t(preview.label)}</strong><small>{preview.captured_at ? `${t("Captured")} ${date(preview.captured_at)}` : t("Capture time unavailable")}</small></span><Badge tone={preview.stream_url || !preview.stale ? "success" : "warning"}>{preview.stream_url ? t("Real-time") : preview.stale ? t("Unavailable") : t("Live")}</Badge></div></article>)}</div> : <Empty>{t("No camera previews were reported by the collector.")}</Empty>}
-    {previews.some((preview) => preview.stale && !preview.stream_url) && <p className="form-hint camera-hint">{t("The head camera is real-time. Hand cameras appear when the collector writes current frames; historical frames are hidden.")}</p>}
+    {previewError && <div className="notice camera-error">{t("Camera preview unavailable")}: {previewError}</div>}
+    <div className="camera-grid">{cameraPreviewSlots.map((slot) => {
+      const preview = previewsByChannel.get(slot.channel);
+      const available = Boolean(preview && (preview.stream_url || !preview.stale));
+      return <article className={`camera-card${preview ? "" : " camera-card-placeholder"}`} key={slot.channel}><div className="camera-frame">{available && preview ? <Image src={preview.stream_url ?? preview.frame_url} alt={t(slot.label)} width={1280} height={720} unoptimized /> : <span className="camera-unavailable">{t("No live frame")}</span>}{preview?.stale && !preview.stream_url && <span className="camera-stale">{t("Stale frame")}</span>}</div><div className="camera-meta"><span><strong>{t(slot.label)}</strong><small>{preview?.captured_at ? `${t("Captured")} ${date(preview.captured_at)}` : t("Capture time unavailable")}</small></span><Badge tone={available ? "success" : "warning"}>{preview?.stream_url ? t("Real-time") : available ? t("Live") : t("Unavailable")}</Badge></div></article>;
+    })}</div>
+    {cameraPreviewSlots.some((slot) => { const preview = previewsByChannel.get(slot.channel); return !preview || (preview.stale && !preview.stream_url); }) && <p className="form-hint camera-hint">{t("The head camera is real-time. Hand cameras appear when the collector writes current frames; historical frames are hidden.")}</p>}
   </section><div className="two-column collection-layout"><section className="panel"><p className="eyebrow">{t("Local orchestration").toUpperCase()}</p><h2>{t("Start collection")}</h2><p className="muted">{t("Allocates local task/job IDs and preserves the collector UID. No vendor upload, discard, or auto-cleanup call is used.")}</p>
     <form className="form-stack" onSubmit={start}><label>{t("Task name")}<input name="name" placeholder="pick-and-place calibration" required minLength={2} /></label><label>{t("Planned duration")}<select name="duration" defaultValue="60"><option value="30">{t("30 seconds")}</option><option value="60">{t("1 minute")}</option><option value="300">{t("5 minutes")}</option><option value="900">{t("15 minutes")}</option></select></label><button className="button primary" disabled={busy || robot.observe_only || !robot.online}>{busy ? t("Starting…") : t("Start collection")}</button>{robot.observe_only && <p className="form-hint">{t("Disabled while this robot is observe-only.")}</p>}</form>
   </section><section className="panel"><div className="section-heading"><div><p className="eyebrow">{t("Sessions").toUpperCase()}</p><h2>{t("Recent collection jobs")}</h2></div><button className="icon-button" onClick={() => load()}><Icon name="refresh" /></button></div>

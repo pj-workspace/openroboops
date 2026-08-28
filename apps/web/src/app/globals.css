@@ -135,6 +135,7 @@ label { display: grid; gap: 7px; color: #9ca6af; font-size: 10px; font-weight: 6
 .camera-panel { overflow: hidden; }
 .camera-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .camera-card { overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: #0c0f12; }
+.camera-card-placeholder { border-style: dashed; }
 .camera-frame { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: #080a0c; }
 .camera-frame img { width: 100%; height: 100%; object-fit: contain; }
 .camera-unavailable { position: absolute; inset: 0; display: grid; place-items: center; color: #697581; font-size: 10px; }

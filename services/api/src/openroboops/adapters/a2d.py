@@ -313,7 +313,16 @@ fi
             "modeSwitch": service_values[1] if len(service_values) > 1 else "unknown",
             "web": service_values[2] if len(service_values) > 2 else "unknown",
         }
-        payload["recording"] = bool((payload.get("progress") or {}).get("job"))
+        # custom_progress reports vendor upload jobs, not the live recorder. The
+        # recorder task endpoint exposed by custom_stack_ready returns 200 while
+        # a recording task is active and 400 while it is idle. Keep the value
+        # unknown when that signal is absent so the worker does not fail a real
+        # collection because an unrelated upload queue is empty.
+        stack = payload.get("stack")
+        record_task_status = stack.get("recordTaskStatus") if isinstance(stack, dict) else None
+        payload["recording"] = record_task_status == 200 if isinstance(record_task_status, int) else None
+        if record_task_status is None:
+            warnings.append("recorder activity status is unavailable")
         payload["alerts"] = warnings
         return AdapterStatus(online=True, payload=payload, capabilities=A2D_CAPABILITIES)
 

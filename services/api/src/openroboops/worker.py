@@ -73,11 +73,11 @@ class Worker:
                         )
                     )
                     payload = dict(adapter_status.payload)
-                    reported_recording = payload.get("recording") is True
+                    reported_recording = payload.get("recording")
                     if active_collection is not None and robot.adapter_type == "a2d":
-                        if reported_recording:
+                        if reported_recording is True:
                             self.collection_misses.pop(active_collection.id, None)
-                        else:
+                        elif reported_recording is False:
                             misses = self.collection_misses.get(active_collection.id, 0) + 1
                             self.collection_misses[active_collection.id] = misses
                             if misses >= 2:
@@ -93,6 +93,11 @@ class Worker:
                                     robot.id,
                                 )
                                 active_collection = None
+                        else:
+                            # Unknown telemetry is not proof that recording
+                            # stopped. Preserve the active session and allow the
+                            # planned/manual stop path to remain authoritative.
+                            self.collection_misses.pop(active_collection.id, None)
                     if active_collection is not None:
                         payload["recording"] = True
                     robot.online = adapter_status.online
