@@ -348,6 +348,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/collections/{collection_id}/force-stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Force Stop Collection */
+        post: operations["force_stop_collection_api_v1_collections__collection_id__force_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/preview/{channel}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Collection Preview */
+        get: operations["read_collection_preview_api_v1_collections__collection_id__preview__channel__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/{collection_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Collection */
+        post: operations["decide_collection_api_v1_collections__collection_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/robots/{robot_id}/control-leases": {
         parameters: {
             query?: never;
@@ -455,6 +506,18 @@ export interface components {
             /** Stream Url */
             stream_url: string | null;
         };
+        /** CollectionDecisionRequest */
+        CollectionDecisionRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "keep" | "delete";
+            /** Password */
+            password?: string | null;
+            /** Confirm Uid */
+            confirm_uid?: string | null;
+        };
         /** CollectionResponse */
         CollectionResponse: {
             /** Id */
@@ -475,6 +538,10 @@ export interface components {
             status: string;
             /** Error */
             error: string | null;
+            /** Review Status */
+            review_status: string;
+            /** Reviewed At */
+            reviewed_at: string | null;
             /**
              * Started At
              * Format: date-time
@@ -1573,6 +1640,114 @@ export interface operations {
             };
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    force_stop_collection_api_v1_collections__collection_id__force_stop_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                openroboops_session?: string | null;
+                openroboops_csrf?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_collection_preview_api_v1_collections__collection_id__preview__channel__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+                channel: string;
+            };
+            cookie?: {
+                openroboops_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_collection_api_v1_collections__collection_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                openroboops_session?: string | null;
+                openroboops_csrf?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionDecisionRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

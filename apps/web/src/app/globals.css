@@ -146,6 +146,15 @@ label { display: grid; gap: 7px; color: #9ca6af; font-size: 10px; font-weight: 6
 .camera-meta small { margin-top: 4px; font-size: 9px; }
 .camera-hint { margin-top: 12px; }
 .camera-error { border-color: #604b24; background: #2d2515; color: #ebc773; }
+.collection-review { display: grid; gap: 18px; }
+.review-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.review-summary > span { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #0c0f12; }
+.review-summary small, .review-summary strong { display: block; }
+.review-summary small { margin-bottom: 7px; font-size: 9px; }
+.review-camera-grid .camera-frame img { position: relative; z-index: 1; }
+.review-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.danger-button { border-color: #784047; color: #f1888e; }
+.delete-confirm { display: grid; gap: 12px; padding-top: 16px; border-top: 1px solid var(--line); }
 .session-list, .audit-list { display: grid; }
 .session-list article, .audit-list > div { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 0; border-top: 1px solid var(--line); }
 .session-list article:first-child, .audit-list > div:first-child { border-top: 0; }
@@ -209,7 +218,7 @@ label { display: grid; gap: 7px; color: #9ca6af; font-size: 10px; font-weight: 6
   .tabs button { font-size: 0; }
   .tabs .icon { width: 20px; height: 20px; }
   .content { padding: 18px; }
-  .metric-grid, .two-column, .form-grid { grid-template-columns: 1fr; }
+  .metric-grid, .two-column, .form-grid, .review-summary { grid-template-columns: 1fr; }
   .camera-grid { grid-template-columns: 1fr; }
   .wide { grid-column: auto; }
   .metric { min-height: 100px; }

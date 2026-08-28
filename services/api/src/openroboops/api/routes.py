@@ -45,6 +45,7 @@ from ..schemas import (
     AuditResponse,
     AuthResponse,
     CameraPreviewResponse,
+    CollectionDecisionRequest,
     CollectionResponse,
     CollectionStartRequest,
     CommandRequest,
@@ -581,6 +582,146 @@ async def stop_collection(collection_id: str, db: DB, user: MutatingAdmin) -> Co
         collection.error = str(exc)
         await db.commit()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
+@router.post("/collections/{collection_id}/force-stop", response_model=CollectionResponse)
+async def force_stop_collection(collection_id: str, db: DB, user: MutatingAdmin) -> CollectionSession:
+    collection = await db.get(CollectionSession, collection_id)
+    if collection is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="collection not found")
+    if not collection.record_uid:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="collection has no recorder UID")
+    if collection.review_status == "deleted":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="collection data was deleted")
+    robot = await db.get(Robot, collection.robot_id)
+    if robot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="robot not found")
+    try:
+        result = await create_adapter(robot.adapter_type, robot.connection).force_stop_collection(
+            collection.record_uid
+        )
+        collection.status = "stopped"
+        collection.stopped_at = utcnow()
+        await audit(
+            db,
+            action="collection.force_stop",
+            user_id=user.id,
+            robot_id=robot.id,
+            target=collection.record_uid,
+            result_payload=result,
+        )
+        await emit_event(db, "collection.progress", {"id": collection.id, "status": "stopped"}, robot.id)
+        await db.commit()
+        await db.refresh(collection)
+        return collection
+    except Exception as exc:
+        collection.status = "failed"
+        collection.error = str(exc)
+        await audit(
+            db,
+            action="collection.force_stop",
+            user_id=user.id,
+            robot_id=robot.id,
+            target=collection.record_uid,
+            result_payload={"error": str(exc)},
+            status_value="failed",
+        )
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
+@router.get("/collections/{collection_id}/preview/{channel}", response_class=Response)
+async def read_collection_preview(collection_id: str, channel: str, db: DB, _: Admin) -> Response:
+    collection = await db.get(CollectionSession, collection_id)
+    if collection is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="collection not found")
+    if not collection.record_uid or collection.review_status == "deleted":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="collection preview is unavailable")
+    robot = await db.get(Robot, collection.robot_id)
+    if robot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="robot not found")
+    try:
+        frame = await create_adapter(robot.adapter_type, robot.connection).read_episode_preview(
+            collection.record_uid, channel
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("collection preview failed for %s channel %s: %s", collection.id, channel, exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="collection preview is unavailable") from exc
+    return Response(
+        content=frame.content,
+        media_type=frame.media_type,
+        headers={"Cache-Control": "private, max-age=30", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.post("/collections/{collection_id}/decision", response_model=CollectionResponse)
+async def decide_collection(
+    collection_id: str,
+    payload: CollectionDecisionRequest,
+    db: DB,
+    user: MutatingAdmin,
+) -> CollectionSession:
+    collection = await db.get(CollectionSession, collection_id)
+    if collection is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="collection not found")
+    if not collection.record_uid:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="collection has no recorder UID")
+    if collection.status in {"starting", "recording", "stopping"}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stop the collection before reviewing it")
+    robot = await db.get(Robot, collection.robot_id)
+    if robot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="robot not found")
+
+    if payload.decision == "delete":
+        if payload.confirm_uid != collection.record_uid:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="confirmation UID does not match")
+        if not payload.password or not verify_password(user.password_hash, payload.password):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="administrator password is invalid")
+        try:
+            result = await create_adapter(robot.adapter_type, robot.connection).discard_episode(
+                collection.record_uid
+            )
+        except Exception as exc:
+            await audit(
+                db,
+                action="collection.delete",
+                user_id=user.id,
+                robot_id=robot.id,
+                target=collection.record_uid,
+                result_payload={"error": str(exc)},
+                status_value="failed",
+            )
+            await db.commit()
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        episode = await db.scalar(
+            select(Episode).where(Episode.robot_id == robot.id, Episode.uid == collection.record_uid)
+        )
+        if episode is not None:
+            await db.delete(episode)
+        collection.review_status = "deleted"
+        action = "collection.delete"
+    else:
+        result = {"preserved": True}
+        collection.review_status = "kept"
+        action = "collection.keep"
+
+    collection.reviewed_at = utcnow()
+    await audit(
+        db,
+        action=action,
+        user_id=user.id,
+        robot_id=robot.id,
+        target=collection.record_uid,
+        request_payload={"decision": payload.decision},
+        result_payload=result,
+    )
+    await db.commit()
+    await db.refresh(collection)
+    return collection
 
 
 @router.post("/robots/{robot_id}/control-leases", response_model=LeaseResponse)

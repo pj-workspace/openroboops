@@ -47,6 +47,12 @@ CAMERA_PREVIEW_CHANNELS = {
     "hand_right_color": "Right hand camera",
 }
 
+EPISODE_PREVIEW_DIRECTORIES = {
+    "hand_left_color": "hand_left",
+    "head_color": "head",
+    "hand_right_color": "hand_right",
+}
+
 CAMERA_DDS_TOPICS = {
     "head_color": "/camera/head_color",
     "hand_left_color": "/camera/hand_left_color",
@@ -419,6 +425,50 @@ fi
             raise ValueError("invalid record UID")
         response = await self._collector_request("PUT", f"/api/custom_stop?uuid={record_uid}")
         return response.get("data", {})
+
+    async def force_stop_collection(self, record_uid: str) -> dict[str, Any]:
+        try:
+            return {"method": "stop", **await self.stop_collection(record_uid)}
+        except Exception as stop_error:
+            restart = await self._collector_request("POST", "/api/custom_restart_stack", {})
+            return {
+                "method": "restart-stack-fallback",
+                "stop_error": str(stop_error),
+                "restart": restart.get("data", {}),
+            }
+
+    async def discard_episode(self, uid: str) -> dict[str, Any]:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", uid):
+            raise ValueError("invalid episode UID")
+        response = await self._collector_request("POST", f"/api/custom_discard?uuid={uid}", {})
+        return response.get("data", {})
+
+    async def read_episode_preview(self, uid: str, channel: str) -> AdapterCameraFrame:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", uid):
+            raise ValueError("invalid episode UID")
+        directory = EPISODE_PREVIEW_DIRECTORIES.get(channel)
+        if directory is None:
+            raise ValueError("unknown episode preview channel")
+        root = self.data_root.rstrip("/")
+        async with self._ssh() as connection:
+            result = await connection.run(
+                "find "
+                f"{shlex.quote(f'{root}/{uid}/camera/{directory}')} "
+                "-type f -iname '*.jpg' -printf '%T@ %p\\n' | sort -n | tail -1",
+                check=False,
+                timeout=12,
+            )
+            stdout = result.stdout if isinstance(result.stdout, str) else ""
+            line = stdout.strip()
+            if result.exit_status != 0 or not line or " " not in line:
+                raise FileNotFoundError("episode camera frame is unavailable")
+            path = line.split(" ", 1)[1]
+            sftp = await connection.start_sftp_client()
+            async with sftp.open(path, "rb") as file_handle:
+                content = cast(bytes, await file_handle.read())
+        if not content.startswith(b"\xff\xd8") or len(content) > 10 * 1024 * 1024:
+            raise RuntimeError("episode camera source returned an invalid JPEG frame")
+        return AdapterCameraFrame(content=content, media_type="image/jpeg")
 
     async def list_camera_previews(self) -> list[AdapterCameraPreview]:
         response = await self._collector_request("GET", "/api/custom_preview_images")

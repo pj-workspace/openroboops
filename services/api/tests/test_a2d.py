@@ -194,3 +194,42 @@ def test_a2d_rejects_unknown_live_camera_channel() -> None:
 
     with pytest.raises(ValueError, match="unknown camera preview channel"):
         adapter.camera_preview_stream("unknown")
+
+
+@pytest.mark.asyncio
+async def test_a2d_force_stop_restarts_stack_without_discarding(monkeypatch: pytest.MonkeyPatch) -> None:
+    adapter = A2DAdapter({})
+    calls: list[tuple[str, str]] = []
+
+    async def fake_request(method: str, path: str, _payload=None):
+        calls.append((method, path))
+        if path.startswith("/api/custom_stop"):
+            raise RuntimeError("recorder slot was not released")
+        return {"data": {"restarted": True}}
+
+    monkeypatch.setattr(adapter, "_collector_request", fake_request)
+
+    result = await adapter.force_stop_collection("record-uid")
+
+    assert result["method"] == "restart-stack-fallback"
+    assert calls == [
+        ("PUT", "/api/custom_stop?uuid=record-uid"),
+        ("POST", "/api/custom_restart_stack"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a2d_discard_is_explicit(monkeypatch: pytest.MonkeyPatch) -> None:
+    adapter = A2DAdapter({})
+    calls: list[tuple[str, str]] = []
+
+    async def fake_request(method: str, path: str, _payload=None):
+        calls.append((method, path))
+        return {"data": {"discarded": True}}
+
+    monkeypatch.setattr(adapter, "_collector_request", fake_request)
+
+    result = await adapter.discard_episode("record-uid")
+
+    assert result == {"discarded": True}
+    assert calls == [("POST", "/api/custom_discard?uuid=record-uid")]

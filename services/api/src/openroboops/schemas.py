@@ -121,9 +121,17 @@ class CollectionResponse(ApiModel):
     planned_duration_seconds: int | None
     status: str
     error: str | None
+    review_status: str
+    reviewed_at: datetime | None
     started_at: datetime
     due_at: datetime | None
     stopped_at: datetime | None
+
+
+class CollectionDecisionRequest(ApiModel):
+    decision: Literal["keep", "delete"]
+    password: str | None = Field(default=None, max_length=256)
+    confirm_uid: str | None = Field(default=None, max_length=160)
 
 
 class CameraPreviewResponse(ApiModel):

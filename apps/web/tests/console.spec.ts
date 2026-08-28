@@ -124,3 +124,33 @@ test("keeps camera previews mounted while another section is open", async ({ pag
   await page.getByRole("button", { name: "Collection" }).click();
   await expect(cameraGrid).toBeVisible();
 });
+
+test("reviews a failed collection and exposes force stop", async ({ page }) => {
+  const failedCollection = {
+    id: "collection-failed-1",
+    robot_id: robot.id,
+    name: "Failed pickup test",
+    task_id: 1,
+    job_id: 2,
+    record_uid: "failed-record-uid",
+    planned_duration_seconds: 60,
+    status: "failed",
+    error: "recorder slot was not released",
+    review_status: "pending",
+    reviewed_at: null,
+    started_at: "2026-08-28T06:53:23Z",
+    due_at: "2026-08-28T06:54:23Z",
+    stopped_at: "2026-08-28T06:58:46Z",
+  };
+  await page.route("**/api/v1/robots/*/collections", (route) => route.fulfill({ json: [failedCollection] }));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Collection" }).click();
+  await expect(page.getByRole("button", { name: "Force stop" })).toBeVisible();
+  await page.getByRole("button", { name: "Review" }).click();
+  const review = page.locator(".collection-review");
+  await expect(review.getByRole("heading", { name: "Failed pickup test" })).toBeVisible();
+  await expect(review.getByText("failed-record-uid", { exact: true })).toBeVisible();
+  await expect(review.getByRole("button", { name: "Keep data" })).toBeVisible();
+  await expect(review.getByRole("button", { name: "Delete data" })).toBeVisible();
+});

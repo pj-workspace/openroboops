@@ -64,6 +64,45 @@ def test_simulator_end_to_end() -> None:
         )
         assert stopped.status_code == 200
         assert stopped.json()["status"] == "completed"
+        assert stopped.json()["review_status"] == "pending"
+
+        force_stopped = client.post(
+            f"/api/v1/collections/{collection.json()['id']}/force-stop",
+            headers=headers,
+        )
+        assert force_stopped.status_code == 200
+        assert force_stopped.json()["status"] == "stopped"
+
+        kept = client.post(
+            f"/api/v1/collections/{collection.json()['id']}/decision",
+            headers=headers,
+            json={"decision": "keep"},
+        )
+        assert kept.status_code == 200
+        assert kept.json()["review_status"] == "kept"
+
+        rejected_delete = client.post(
+            f"/api/v1/collections/{collection.json()['id']}/decision",
+            headers=headers,
+            json={
+                "decision": "delete",
+                "password": "correct-horse-battery",
+                "confirm_uid": "wrong-uid",
+            },
+        )
+        assert rejected_delete.status_code == 409
+
+        deleted = client.post(
+            f"/api/v1/collections/{collection.json()['id']}/decision",
+            headers=headers,
+            json={
+                "decision": "delete",
+                "password": "correct-horse-battery",
+                "confirm_uid": collection.json()["record_uid"],
+            },
+        )
+        assert deleted.status_code == 200
+        assert deleted.json()["review_status"] == "deleted"
 
         episode_id = scan.json()[0]["id"]
         sync = client.post(f"/api/v1/episodes/{episode_id}/sync", headers=headers)

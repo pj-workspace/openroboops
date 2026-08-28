@@ -72,6 +72,15 @@ class RobotAdapter(ABC):
     async def read_camera_preview(self, channel: str) -> AdapterCameraFrame:
         raise NotImplementedError("camera preview unsupported")
 
+    async def read_episode_preview(self, uid: str, channel: str) -> AdapterCameraFrame:
+        raise NotImplementedError("episode preview unsupported")
+
+    async def force_stop_collection(self, record_uid: str) -> dict[str, Any]:
+        return await self.stop_collection(record_uid)
+
+    async def discard_episode(self, uid: str) -> dict[str, Any]:
+        raise NotImplementedError("episode discard unsupported")
+
     def camera_preview_stream(self, channel: str) -> AsyncIterator[AdapterCameraFrame]:
         raise NotImplementedError("live camera preview unsupported")
 

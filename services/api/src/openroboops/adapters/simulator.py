@@ -93,6 +93,10 @@ class SimulatorAdapter(RobotAdapter):
         await asyncio.sleep(0.1)
         return {"released": True, "record_uid": record_uid}
 
+    async def discard_episode(self, uid: str) -> dict[str, Any]:
+        await asyncio.sleep(0.1)
+        return {"discarded": True, "record_uid": uid, "simulated": True}
+
     async def execute_command(self, command_type: str, params: dict[str, Any]) -> dict[str, Any]:
         if command_type not in SIMULATOR_CAPABILITIES:
             raise ValueError(f"unsupported simulator command: {command_type}")
