@@ -1,4 +1,4 @@
-FROM node:22-alpine AS dependencies
+FROM public.ecr.aws/docker/library/node:22-alpine AS dependencies
 RUN corepack enable
 WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -9,7 +9,7 @@ FROM dependencies AS build
 COPY apps/web ./apps/web
 RUN pnpm --dir apps/web build
 
-FROM node:22-alpine AS runtime
+FROM public.ecr.aws/docker/library/node:22-alpine AS runtime
 ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000
 WORKDIR /app
 COPY --from=build /repo/apps/web/.next/standalone ./

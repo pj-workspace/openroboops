@@ -2,7 +2,7 @@ name: openroboops
 
 services:
   postgres:
-    image: postgres:18-alpine
+    image: public.ecr.aws/docker/library/postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: openroboops
@@ -69,7 +69,7 @@ services:
         condition: service_healthy
 
   caddy:
-    image: caddy:2.10-alpine
+    image: public.ecr.aws/docker/library/caddy:2.10-alpine
     restart: unless-stopped
     environment:
       OPENROBOOPS_SITE_ADDRESS: ${OPENROBOOPS_SITE_ADDRESS:-https://localhost}

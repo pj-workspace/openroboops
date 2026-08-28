@@ -1,6 +1,8 @@
 # Deployment
 
 The reference deployment runs entirely in containers and does not use a host GPU.
+Official base images are referenced through AWS Public ECR's Docker Library mirror,
+which avoids a hard dependency on Docker Hub while preserving upstream images.
 
 ## Host preparation
 
