@@ -12,8 +12,8 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY services/api/pyproject.toml services/api/uv.lock ./
-RUN uv sync --frozen --no-dev
 COPY services/api/src ./src
+RUN uv sync --frozen --no-dev
 COPY services/api/alembic.ini ./alembic.ini
 COPY services/api/migrations ./migrations
 

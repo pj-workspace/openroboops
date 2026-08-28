@@ -17,8 +17,10 @@ jobs:
         include:
           - name: api
             dockerfile: services/api/Dockerfile
+            smoke: python -c 'import openroboops'
           - name: web
             dockerfile: apps/web/Dockerfile
+            smoke: test -f /app/apps/web/server.js
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
@@ -33,6 +35,12 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           push: ${{ github.event_name == 'push' }}
+          load: ${{ github.event_name != 'push' }}
           tags: ghcr.io/${{ github.repository }}-${{ matrix.name }}:latest
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      - name: Pull published image
+        if: github.event_name == 'push'
+        run: docker pull ghcr.io/${{ github.repository }}-${{ matrix.name }}:latest
+      - name: Smoke test image
+        run: docker run --rm --entrypoint sh ghcr.io/${{ github.repository }}-${{ matrix.name }}:latest -c "${{ matrix.smoke }}"
