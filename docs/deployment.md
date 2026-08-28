@@ -20,6 +20,7 @@ POSTGRES_PASSWORD=replace-with-a-strong-random-value
 OPENROBOOPS_DATA_ROOT_HOST=/srv/openroboops-data
 OPENROBOOPS_SECRETS_HOST=/srv/openroboops/runtime-secrets
 OPENROBOOPS_SITE_ADDRESS=https://openroboops.example.lan
+OPENROBOOPS_SITE_HOST=openroboops.example.lan
 OPENROBOOPS_HTTP_PORT=8080
 OPENROBOOPS_HTTPS_PORT=8443
 ```

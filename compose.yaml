@@ -73,6 +73,7 @@ services:
     restart: unless-stopped
     environment:
       OPENROBOOPS_SITE_ADDRESS: ${OPENROBOOPS_SITE_ADDRESS:-https://localhost}
+      OPENROBOOPS_SITE_HOST: ${OPENROBOOPS_SITE_HOST:-localhost}
     ports:
       - ${OPENROBOOPS_HTTP_PORT:-8080}:80
       - ${OPENROBOOPS_HTTPS_PORT:-8443}:443

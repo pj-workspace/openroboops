@@ -1,16 +1,20 @@
+{
+	default_sni {$OPENROBOOPS_SITE_HOST:localhost}
+}
+
 {$OPENROBOOPS_SITE_ADDRESS:https://localhost} {
-    tls internal
-    encode zstd gzip
+	tls internal
+	encode zstd gzip
 
-    @api path /api/*
-    reverse_proxy @api api:8000
-    reverse_proxy web:3000
+	@api path /api/*
+	reverse_proxy @api api:8000
+	reverse_proxy web:3000
 
-    header {
-        -Server
-        X-Content-Type-Options nosniff
-        X-Frame-Options DENY
-        Referrer-Policy no-referrer
-        Permissions-Policy "camera=(), microphone=(), geolocation=()"
-    }
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
 }
