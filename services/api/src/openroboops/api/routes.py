@@ -17,6 +17,7 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
+from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -473,6 +474,9 @@ async def list_camera_previews(robot_id: str, db: DB, _: Admin) -> list[CameraPr
             size=preview.size,
             stale=preview.age_ms is None or preview.age_ms > 10_000,
             frame_url=f"/api/v1/robots/{robot.id}/camera-previews/{preview.channel}/frame?v={preview.version}",
+            stream_url=f"/api/v1/robots/{robot.id}/camera-previews/{preview.channel}/stream"
+            if preview.streamable
+            else None,
         )
         for preview in previews
     ]
@@ -499,6 +503,44 @@ async def read_camera_preview(robot_id: str, channel: str, db: DB, _: Admin) -> 
         media_type=frame.media_type,
         headers={
             "Cache-Control": "private, max-age=2",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/robots/{robot_id}/camera-previews/{channel}/stream")
+async def stream_camera_preview(robot_id: str, channel: str, db: DB, _: Admin) -> StreamingResponse:
+    robot = await db.get(Robot, robot_id)
+    if robot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="robot not found")
+    if not robot.online:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="robot is offline")
+    adapter = create_adapter(robot.adapter_type, robot.connection)
+    try:
+        frames = adapter.camera_preview_stream(channel)
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    async def multipart_frames():
+        try:
+            async for frame in frames:
+                yield (
+                    b"--frame\r\n"
+                    + f"Content-Type: {frame.media_type}\r\nContent-Length: {len(frame.content)}\r\n\r\n".encode()
+                    + frame.content
+                    + b"\r\n"
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("live camera stream failed for robot %s channel %s: %s", robot.id, channel, exc)
+
+    return StreamingResponse(
+        multipart_frames(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={
+            "Cache-Control": "no-store, private",
+            "X-Accel-Buffering": "no",
             "X-Content-Type-Options": "nosniff",
         },
     )

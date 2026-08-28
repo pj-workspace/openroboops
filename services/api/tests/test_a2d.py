@@ -95,10 +95,10 @@ async def test_a2d_camera_frame_rejects_collector_ssrf_url(monkeypatch: pytest.M
         yield FakeConnection()
 
     async def fake_collector(_connection, _method: str, _path: str, _payload=None):
-        return {"data": {"head_color": "http://metadata.internal/latest"}}
+        return {"data": {"hand_left_color": "http://metadata.internal/latest"}}
 
     monkeypatch.setattr(adapter, "_ssh", fake_ssh)
     monkeypatch.setattr(adapter, "_collector_request_on_connection", fake_collector)
 
     with pytest.raises(RuntimeError, match="unsafe camera preview URL"):
-        await adapter.read_camera_preview("head_color")
+        await adapter.read_camera_preview("hand_left_color")

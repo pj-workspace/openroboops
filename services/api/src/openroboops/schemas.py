@@ -134,6 +134,7 @@ class CameraPreviewResponse(ApiModel):
     size: int | None
     stale: bool
     frame_url: str
+    stream_url: str | None
 
 
 class SyncJobResponse(ApiModel):

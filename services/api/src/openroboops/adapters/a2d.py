@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import io
 import json
 import os
 import re
 import shlex
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 import asyncssh
 import httpx
+from PIL import Image
 
 from .base import (
     AdapterCameraFrame,
@@ -45,6 +48,11 @@ CAMERA_PREVIEW_CHANNELS = {
     "hand_left_color": "Left hand camera",
     "hand_right_color": "Right hand camera",
 }
+
+LIVE_HEAD_PREVIEW_DIRECTORIES = (
+    "/dev/shm/hmi/head_center_fisheye",
+    "/dev/shm/hmi/head",
+)
 
 COMMAND_ENDPOINTS: dict[str, tuple[str, str]] = {
     "save_reset_pose": ("POST", "/api/custom_arm_reset_pose"),
@@ -351,7 +359,7 @@ fi
         metadata = response.get("meta", {})
         if not isinstance(data, dict) or not isinstance(metadata, dict):
             raise RuntimeError("collector returned invalid camera preview metadata")
-        previews: list[AdapterCameraPreview] = []
+        previews: dict[str, AdapterCameraPreview] = {}
         for channel, label in CAMERA_PREVIEW_CHANNELS.items():
             source_url = data.get(channel)
             details = metadata.get(channel, {})
@@ -360,21 +368,70 @@ fi
             captured_at_ms = details.get("mtimeMs")
             age_ms = details.get("ageMs")
             size = details.get("size")
-            previews.append(
-                AdapterCameraPreview(
-                    channel=channel,
-                    label=label,
-                    captured_at_ms=int(captured_at_ms) if isinstance(captured_at_ms, int | float) else None,
-                    age_ms=max(0, int(age_ms)) if isinstance(age_ms, int | float) else None,
-                    size=int(size) if isinstance(size, int | float) else None,
-                    version=str(int(captured_at_ms)) if isinstance(captured_at_ms, int | float) else "unknown",
-                )
+            previews[channel] = AdapterCameraPreview(
+                channel=channel,
+                label=label,
+                captured_at_ms=int(captured_at_ms) if isinstance(captured_at_ms, int | float) else None,
+                age_ms=max(0, int(age_ms)) if isinstance(age_ms, int | float) else None,
+                size=int(size) if isinstance(size, int | float) else None,
+                version=str(int(captured_at_ms)) if isinstance(captured_at_ms, int | float) else "unknown",
             )
-        return previews
+        try:
+            live_head = await self._live_head_preview_metadata()
+        except Exception:
+            live_head = None
+        if live_head is not None:
+            previews[live_head.channel] = live_head
+        return [previews[channel] for channel in CAMERA_PREVIEW_CHANNELS if channel in previews]
+
+    async def _live_head_preview_metadata(self) -> AdapterCameraPreview | None:
+        async with self._ssh() as connection:
+            sftp = await connection.start_sftp_client()
+            path = await self._latest_live_head_path(sftp)
+            if path is None:
+                return None
+            attributes = await sftp.stat(path)
+        captured_at_ms = int(attributes.mtime * 1000) if attributes.mtime is not None else None
+        return AdapterCameraPreview(
+            channel="head_color",
+            label="Head camera",
+            captured_at_ms=captured_at_ms,
+            age_ms=max(0, int(time.time() * 1000) - captured_at_ms) if captured_at_ms is not None else None,
+            size=int(attributes.size) if attributes.size is not None else None,
+            version=str(captured_at_ms or "live"),
+            streamable=True,
+        )
+
+    @staticmethod
+    async def _latest_live_head_path(sftp: asyncssh.SFTPClient) -> str | None:
+        for directory in LIVE_HEAD_PREVIEW_DIRECTORIES:
+            paths = await sftp.glob(f"{directory}/*.jpg")
+            if paths:
+                return max((str(path) for path in paths), key=lambda path: Path(path).name)
+        return None
+
+    @staticmethod
+    def _optimize_live_frame(content: bytes) -> bytes:
+        if not content.startswith(b"\xff\xd8"):
+            raise RuntimeError("live camera source returned a non-JPEG frame")
+        with Image.open(io.BytesIO(content)) as image:
+            image.thumbnail((960, 768), Image.Resampling.BILINEAR)
+            output = io.BytesIO()
+            image.save(output, format="JPEG", quality=72)
+            return output.getvalue()
 
     async def read_camera_preview(self, channel: str) -> AdapterCameraFrame:
         if channel not in CAMERA_PREVIEW_CHANNELS:
             raise ValueError("unknown camera preview channel")
+        if channel == "head_color":
+            async with self._ssh() as connection:
+                sftp = await connection.start_sftp_client()
+                path = await self._latest_live_head_path(sftp)
+                if path is not None:
+                    async with sftp.open(path, "rb") as file_handle:
+                        content = cast(bytes, await file_handle.read())
+                    optimized = await asyncio.to_thread(self._optimize_live_frame, content)
+                    return AdapterCameraFrame(content=optimized, media_type="image/jpeg")
         async with self._ssh() as connection:
             manifest = await self._collector_request_on_connection(connection, "GET", "/api/custom_preview_images")
             data = manifest.get("data", {})
@@ -402,6 +459,26 @@ fi
         if not response.content or len(response.content) > 10 * 1024 * 1024:
             raise RuntimeError("collector returned an invalid camera preview size")
         return AdapterCameraFrame(content=response.content, media_type=media_type)
+
+    def camera_preview_stream(self, channel: str) -> AsyncIterator[AdapterCameraFrame]:
+        if channel != "head_color":
+            raise NotImplementedError("this camera channel has no live source")
+
+        async def frames() -> AsyncIterator[AdapterCameraFrame]:
+            async with self._ssh() as connection:
+                sftp = await connection.start_sftp_client()
+                last_path: str | None = None
+                while True:
+                    path = await self._latest_live_head_path(sftp)
+                    if path is not None and path != last_path:
+                        async with sftp.open(path, "rb") as file_handle:
+                            content = cast(bytes, await file_handle.read())
+                        optimized = await asyncio.to_thread(self._optimize_live_frame, content)
+                        last_path = path
+                        yield AdapterCameraFrame(content=optimized, media_type="image/jpeg")
+                    await asyncio.sleep(0.25)
+
+        return frames()
 
     async def execute_command(self, command_type: str, params: dict[str, Any]) -> dict[str, Any]:
         if command_type not in COMMAND_ENDPOINTS:

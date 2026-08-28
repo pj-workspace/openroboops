@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -35,6 +35,7 @@ class AdapterCameraPreview:
     age_ms: int | None
     size: int | None
     version: str
+    streamable: bool = False
 
 
 @dataclass(slots=True)
@@ -70,6 +71,9 @@ class RobotAdapter(ABC):
 
     async def read_camera_preview(self, channel: str) -> AdapterCameraFrame:
         raise NotImplementedError("camera preview unsupported")
+
+    def camera_preview_stream(self, channel: str) -> AsyncIterator[AdapterCameraFrame]:
+        raise NotImplementedError("live camera preview unsupported")
 
     @abstractmethod
     async def sync_episode(

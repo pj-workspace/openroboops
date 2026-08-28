@@ -1469,6 +1469,68 @@
         }
       }
     },
+    "/api/v1/robots/{robot_id}/camera-previews/{channel}/stream": {
+      "get": {
+        "summary": "Stream Camera Preview",
+        "operationId": "stream_camera_preview_api_v1_robots__robot_id__camera_previews__channel__stream_get",
+        "parameters": [
+          {
+            "name": "robot_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Robot Id"
+            }
+          },
+          {
+            "name": "channel",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Channel"
+            }
+          },
+          {
+            "name": "openroboops_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Openroboops Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/collections/{collection_id}/stop": {
       "post": {
         "summary": "Stop Collection",
@@ -2000,6 +2062,17 @@
           "frame_url": {
             "type": "string",
             "title": "Frame Url"
+          },
+          "stream_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stream Url"
           }
         },
         "type": "object",
@@ -2010,7 +2083,8 @@
           "age_ms",
           "size",
           "stale",
-          "frame_url"
+          "frame_url",
+          "stream_url"
         ],
         "title": "CameraPreviewResponse"
       },

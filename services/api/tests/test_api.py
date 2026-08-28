@@ -43,6 +43,8 @@ def test_simulator_end_to_end() -> None:
         previews = client.get(f"/api/v1/robots/{robot_id}/camera-previews")
         assert previews.status_code == 200
         assert previews.json() == []
+        stream = client.get(f"/api/v1/robots/{robot_id}/camera-previews/head_color/stream")
+        assert stream.status_code == 409
 
         scan = client.post(f"/api/v1/robots/{robot_id}/episodes/scan", headers=headers)
         assert scan.status_code == 200
