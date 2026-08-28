@@ -165,7 +165,10 @@ class A2DAdapter(RobotAdapter):
         }
 
         async def read_one(name: str, path: str) -> tuple[str, dict[str, Any]]:
-            response = await self._collector_request("GET", path)
+            try:
+                response = await self._collector_request("GET", path)
+            except Exception as exc:
+                raise RuntimeError(f"{name} status unavailable: {exc}") from exc
             value = response.get("data", {})
             if not isinstance(value, dict):
                 raise RuntimeError(f"collector returned invalid {name} data")
@@ -177,11 +180,10 @@ class A2DAdapter(RobotAdapter):
             return_exceptions=True,
         )
         payload: dict[str, Any] = {}
-        errors: list[str] = []
         warnings: list[str] = []
         for item in values:
             if isinstance(item, BaseException):
-                errors.append(str(item))
+                warnings.append(str(item))
             else:
                 name, value = item
                 payload[name] = value
@@ -216,7 +218,7 @@ class A2DAdapter(RobotAdapter):
                 "free": disk_values[2],
             }
         else:
-            errors.append("robot data disk status is unavailable")
+            warnings.append("robot data disk status is unavailable")
         services_stdout = services_result.stdout if isinstance(services_result.stdout, str) else ""
         service_values = services_stdout.splitlines()
         payload["services"] = {
@@ -225,8 +227,8 @@ class A2DAdapter(RobotAdapter):
             "web": service_values[2] if len(service_values) > 2 else "unknown",
         }
         payload["recording"] = bool((payload.get("progress") or {}).get("job"))
-        payload["alerts"] = errors + warnings
-        return AdapterStatus(online=not errors, payload=payload, capabilities=A2D_CAPABILITIES)
+        payload["alerts"] = warnings
+        return AdapterStatus(online=True, payload=payload, capabilities=A2D_CAPABILITIES)
 
     async def list_episodes(self) -> list[AdapterEpisode]:
         root = self.data_root.rstrip("/")
