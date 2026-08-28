@@ -59,6 +59,7 @@ LIVE_HEAD_PREVIEW_DIRECTORIES = (
 )
 
 LIVE_CAMERA_STREAM_READER = r"""import os, sys, time
+import cv2
 from a2d_sdk.core.camera.camera_receiver_cosine import CameraReceiverCosine
 
 topic = sys.argv[1]
@@ -66,7 +67,8 @@ camera = CameraReceiverCosine([topic])
 output = os.fdopen(3, "wb", buffering=0)
 last_timestamp = None
 next_frame_at = 0.0
-frame_interval = 1.0 / 15.0
+frame_interval = 1.0 / 10.0
+target_width = 720 if topic == "/camera/head_color" else 560
 try:
     while True:
         packet = camera.get_latest_packet(topic)
@@ -78,14 +80,30 @@ try:
         if timestamp == last_timestamp or now < next_frame_at:
             time.sleep(0.005)
             continue
-        payload = packet.get_image_data()
-        if payload is None:
+        image_data = packet.get_image_data()
+        if image_data is None:
             time.sleep(0.01)
             continue
-        payload = bytes(payload)
-        if not payload.startswith(b"\xff\xd8"):
+        image = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
+        if image is None:
             time.sleep(0.01)
             continue
+        height, width = image.shape[:2]
+        target_height = max(1, int(height * target_width / width))
+        image = cv2.resize(
+            image,
+            (target_width, target_height),
+            interpolation=cv2.INTER_AREA,
+        )
+        encoded_ok, encoded = cv2.imencode(
+            ".jpg",
+            image,
+            [int(cv2.IMWRITE_JPEG_QUALITY), 55],
+        )
+        if not encoded_ok:
+            time.sleep(0.01)
+            continue
+        payload = encoded.tobytes()
         output.write(len(payload).to_bytes(4, "big"))
         output.write(payload)
         last_timestamp = timestamp

@@ -39,7 +39,7 @@ example uses an RFC 5737 documentation-only address and will not connect to a ro
 
 - Status calls create a short-lived SSH tunnel to the collector's loopback HTTP port.
 - Live head and hand previews subscribe to the vendor camera bus read-only, then proxy
-  its existing JPEG packets at up to 15 FPS. The browser never connects to that bus.
+  bandwidth-bounded JPEG previews at up to 10 FPS. The browser never connects to that bus.
 - Service and disk health are read over the same pinned SSH identity.
 - Episode discovery scans `<data_root>/*/meta_info.json` through SFTP; it does not depend
   on vendor history endpoints.
