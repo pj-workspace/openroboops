@@ -57,6 +57,7 @@ class Worker:
         async with SessionLocal() as db:
             robots = list((await db.scalars(select(Robot).order_by(Robot.name))).all())
         for robot_snapshot in robots:
+            scan_robot_id: str | None = None
             async with SessionLocal() as db:
                 robot = await db.get(Robot, robot_snapshot.id)
                 if robot is None:
@@ -117,7 +118,7 @@ class Worker:
                         db.add(TelemetrySnapshot(robot_id=robot.id, payload=payload))
                         self.last_persisted[robot.id] = now
                     await db.commit()
-                    await self.scan_if_due(robot.id)
+                    scan_robot_id = robot.id
                 except Exception as exc:
                     robot.online = False
                     robot.revision += 1
@@ -134,6 +135,8 @@ class Worker:
                         )
                     await db.commit()
                     logger.warning("Robot poll failed for %s: %s", robot.name, exc)
+            if scan_robot_id is not None:
+                await self.scan_if_due(scan_robot_id)
 
     async def scan_if_due(self, robot_id: str) -> None:
         now = datetime.now(UTC)
@@ -144,14 +147,15 @@ class Worker:
             robot = await db.get(Robot, robot_id)
             if robot is None or not robot.online:
                 return
+            robot_name = robot.name
             try:
                 episodes = await scan_robot_episodes(db, robot)
                 await db.commit()
                 self.last_scanned[robot_id] = now
-                logger.info("Indexed %s episodes for %s", len(episodes), robot.name)
+                logger.info("Indexed %s episodes for %s", len(episodes), robot_name)
             except Exception as exc:
                 await db.rollback()
-                logger.warning("Episode scan failed for %s: %s", robot.name, exc)
+                logger.warning("Episode scan failed for %s: %s", robot_name, exc)
 
     async def process_sync(self) -> None:
         async with SessionLocal() as db:
