@@ -48,9 +48,7 @@ async def test_a2d_detects_live_vr_messages(monkeypatch: pytest.MonkeyPatch) -> 
     async def fake_ssh():
         yield FakeConnection()
 
-    websocket = FakeWebSocket(
-        '{"op":"publish","topic":"/remote/vr_data","msg":{"status":0,"err_code":0}}'
-    )
+    websocket = FakeWebSocket('{"op":"publish","topic":"/remote/vr_data","msg":{"status":0,"err_code":0}}')
     monkeypatch.setattr(adapter, "_ssh", fake_ssh)
     monkeypatch.setattr(a2d_module, "connect", lambda *_args, **_kwargs: websocket)
 
