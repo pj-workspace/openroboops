@@ -24,16 +24,22 @@ and commands fail instead of silently trusting a new host.
   "private_key_path": "/run/secrets/robot_key",
   "data_root": "/data/record",
   "collector_host": "127.0.0.1",
-  "collector_port": 8888
+  "collector_port": 8888,
+  "camera_bus_locator_ip": "192.0.2.10",
+  "camera_bus_discovery_uri": "http://192.0.2.10:2379"
 }
 ```
 
 Use a DNS name or address that is private to your deployment. Never publish a real
 profile. Inline passwords, tokens, or private-key bodies are rejected by the API.
+The camera bus fields are deployment-specific Aorta/Cosine discovery settings. The
+example uses an RFC 5737 documentation-only address and will not connect to a robot.
 
 ## Read path
 
 - Status calls create a short-lived SSH tunnel to the collector's loopback HTTP port.
+- Live head and hand previews subscribe to the vendor camera bus read-only, then proxy
+  its existing JPEG packets at up to 15 FPS. The browser never connects to that bus.
 - Service and disk health are read over the same pinned SSH identity.
 - Episode discovery scans `<data_root>/*/meta_info.json` through SFTP; it does not depend
   on vendor history endpoints.

@@ -140,7 +140,9 @@ A2D adapter 不安装、不修改、也不重新分发厂商软件。私有部�
   "private_key_path": "/run/secrets/robot_key",
   "data_root": "/data/record",
   "collector_host": "127.0.0.1",
-  "collector_port": 8888
+  "collector_port": 8888,
+  "camera_bus_locator_ip": "192.0.2.10",
+  "camera_bus_discovery_uri": "http://192.0.2.10:2379"
 }
 ```
 

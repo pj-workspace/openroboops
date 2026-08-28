@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 import pytest
@@ -79,10 +80,16 @@ async def test_a2d_camera_preview_metadata_is_sanitized(monkeypatch: pytest.Monk
 
     previews = await adapter.list_camera_previews()
 
-    assert len(previews) == 1
+    assert len(previews) == 3
     assert previews[0].channel == "head_color"
     assert previews[0].label == "Head camera"
     assert previews[0].version == "1700000000000"
+    assert all(preview.streamable for preview in previews)
+    assert {preview.channel for preview in previews} == {
+        "head_color",
+        "hand_left_color",
+        "hand_right_color",
+    }
     assert not hasattr(previews[0], "source_url")
 
 
@@ -102,3 +109,55 @@ async def test_a2d_camera_frame_rejects_collector_ssrf_url(monkeypatch: pytest.M
 
     with pytest.raises(RuntimeError, match="unsafe camera preview URL"):
         await adapter.read_camera_preview("hand_left_color")
+
+
+@pytest.mark.asyncio
+async def test_a2d_streams_hand_camera_from_cosine_bus(monkeypatch: pytest.MonkeyPatch) -> None:
+    adapter = A2DAdapter(
+        {
+            "camera_bus_locator_ip": "robot-control.local",
+            "camera_bus_discovery_uri": "http://robot-control.local:2379",
+        }
+    )
+    payload = b"\xff\xd8live-jpeg"
+    reader = asyncio.StreamReader()
+    reader.feed_data(len(payload).to_bytes(4, "big") + payload)
+
+    class FakeProcess:
+        stdout = reader
+
+        def terminate(self) -> None:
+            pass
+
+        async def wait(self) -> None:
+            pass
+
+    class StreamConnection:
+        command = ""
+
+        async def create_process(self, command: str, **_kwargs: object) -> FakeProcess:
+            self.command = command
+            return FakeProcess()
+
+    connection = StreamConnection()
+
+    @asynccontextmanager
+    async def fake_ssh():
+        yield connection
+
+    monkeypatch.setattr(adapter, "_ssh", fake_ssh)
+
+    frames = adapter.camera_preview_stream("hand_left_color")
+    frame = await anext(frames)
+    await frames.aclose()
+
+    assert frame.content == payload
+    assert frame.media_type == "image/jpeg"
+    assert "/camera/hand_left_color" in connection.command
+
+
+def test_a2d_rejects_unknown_live_camera_channel() -> None:
+    adapter = A2DAdapter({})
+
+    with pytest.raises(ValueError, match="unknown camera preview channel"):
+        adapter.camera_preview_stream("unknown")

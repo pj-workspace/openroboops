@@ -518,6 +518,8 @@ async def stream_camera_preview(robot_id: str, channel: str, db: DB, _: Admin) -
     adapter = create_adapter(robot.adapter_type, robot.connection)
     try:
         frames = adapter.camera_preview_stream(channel)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except NotImplementedError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 

@@ -47,41 +47,51 @@ CAMERA_PREVIEW_CHANNELS = {
     "hand_right_color": "Right hand camera",
 }
 
+CAMERA_DDS_TOPICS = {
+    "head_color": "/camera/head_color",
+    "hand_left_color": "/camera/hand_left_color",
+    "hand_right_color": "/camera/hand_right_color",
+}
+
 LIVE_HEAD_PREVIEW_DIRECTORIES = (
     "/dev/shm/hmi/head_center_fisheye",
     "/dev/shm/hmi/head",
 )
 
-LIVE_HEAD_STREAM_READER = r"""import glob, os, sys, time
-import cv2
-last = ""
-while True:
-    paths = glob.glob("/dev/shm/hmi/head_center_fisheye/*.jpg")
-    if paths:
-        path = max(paths, key=os.path.basename)
-        if path != last:
-            image = cv2.imread(path, cv2.IMREAD_COLOR)
-            if image is not None:
-                height, width = image.shape[:2]
-                target_width = 960
-                target_height = max(1, int(height * target_width / width))
-                resized = cv2.resize(
-                    image,
-                    (target_width, target_height),
-                    interpolation=cv2.INTER_AREA,
-                )
-                ok, encoded = cv2.imencode(
-                    ".jpg",
-                    resized,
-                    [int(cv2.IMWRITE_JPEG_QUALITY), 72],
-                )
-                if ok:
-                    payload = encoded.tobytes()
-                    sys.stdout.buffer.write(len(payload).to_bytes(4, "big"))
-                    sys.stdout.buffer.write(payload)
-                    sys.stdout.buffer.flush()
-                    last = path
-    time.sleep(0.20)
+LIVE_CAMERA_STREAM_READER = r"""import os, sys, time
+from a2d_sdk.core.camera.camera_receiver_cosine import CameraReceiverCosine
+
+topic = sys.argv[1]
+camera = CameraReceiverCosine([topic])
+output = os.fdopen(3, "wb", buffering=0)
+last_timestamp = None
+next_frame_at = 0.0
+frame_interval = 1.0 / 15.0
+try:
+    while True:
+        packet = camera.get_latest_packet(topic)
+        if packet is None:
+            time.sleep(0.01)
+            continue
+        timestamp = int(packet.send_timestamp)
+        now = time.monotonic()
+        if timestamp == last_timestamp or now < next_frame_at:
+            time.sleep(0.005)
+            continue
+        payload = packet.get_image_data()
+        if payload is None:
+            time.sleep(0.01)
+            continue
+        payload = bytes(payload)
+        if not payload.startswith(b"\xff\xd8"):
+            time.sleep(0.01)
+            continue
+        output.write(len(payload).to_bytes(4, "big"))
+        output.write(payload)
+        last_timestamp = timestamp
+        next_frame_at = now + frame_interval
+finally:
+    camera.close()
 """
 
 COMMAND_ENDPOINTS: dict[str, tuple[str, str]] = {
@@ -412,7 +422,21 @@ fi
             live_head = None
         if live_head is not None:
             previews[live_head.channel] = live_head
-        return [previews[channel] for channel in CAMERA_PREVIEW_CHANNELS if channel in previews]
+        for channel, label in CAMERA_PREVIEW_CHANNELS.items():
+            preview = previews.get(channel)
+            if preview is None:
+                previews[channel] = AdapterCameraPreview(
+                    channel=channel,
+                    label=label,
+                    captured_at_ms=None,
+                    age_ms=None,
+                    size=None,
+                    version="cosine-live",
+                    streamable=True,
+                )
+            else:
+                preview.streamable = True
+        return [previews[channel] for channel in CAMERA_PREVIEW_CHANNELS]
 
     async def _live_head_preview_metadata(self) -> AdapterCameraPreview | None:
         async with self._ssh() as connection:
@@ -482,13 +506,26 @@ fi
         return AdapterCameraFrame(content=response.content, media_type=media_type)
 
     def camera_preview_stream(self, channel: str) -> AsyncIterator[AdapterCameraFrame]:
-        if channel != "head_color":
-            raise NotImplementedError("this camera channel has no live source")
+        topic = CAMERA_DDS_TOPICS.get(channel)
+        if topic is None:
+            raise ValueError("unknown camera preview channel")
 
         async def frames() -> AsyncIterator[AdapterCameraFrame]:
+            locator_ip = self._required("camera_bus_locator_ip")
+            discovery_uri = self._required("camera_bus_discovery_uri")
+            parsed_discovery = urlsplit(discovery_uri)
+            if parsed_discovery.scheme not in {"http", "https"} or not parsed_discovery.hostname:
+                raise ValueError("A2D camera bus discovery URI is invalid")
             async with self._ssh() as connection:
+                command = (
+                    f"env LOCATOR_IP={shlex.quote(locator_ip)} "
+                    f"AORTA_DISCOVERY_URI={shlex.quote(discovery_uri)} "
+                    "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python "
+                    f"python3 -u -c {shlex.quote(LIVE_CAMERA_STREAM_READER)} {shlex.quote(topic)} "
+                    "3>&1 1>/dev/null 2>/dev/null"
+                )
                 process = await connection.create_process(
-                    f"python3 -u -c {shlex.quote(LIVE_HEAD_STREAM_READER)}",
+                    command,
                     encoding=None,
                 )
                 try:

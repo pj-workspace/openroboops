@@ -141,7 +141,9 @@ The A2D adapter is non-invasive. It does not install, modify, or redistribute ve
   "private_key_path": "/run/secrets/robot_key",
   "data_root": "/data/record",
   "collector_host": "127.0.0.1",
-  "collector_port": 8888
+  "collector_port": 8888,
+  "camera_bus_locator_ip": "192.0.2.10",
+  "camera_bus_discovery_uri": "http://192.0.2.10:2379"
 }
 ```
 
