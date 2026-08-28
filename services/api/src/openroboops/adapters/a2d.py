@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import io
 import json
 import os
 import re
@@ -16,7 +15,6 @@ from urllib.parse import urlsplit
 
 import asyncssh
 import httpx
-from PIL import Image
 
 from .base import (
     AdapterCameraFrame,
@@ -53,6 +51,38 @@ LIVE_HEAD_PREVIEW_DIRECTORIES = (
     "/dev/shm/hmi/head_center_fisheye",
     "/dev/shm/hmi/head",
 )
+
+LIVE_HEAD_STREAM_READER = r'''import glob, os, sys, time
+import cv2
+last = ""
+while True:
+    paths = glob.glob("/dev/shm/hmi/head_center_fisheye/*.jpg")
+    if paths:
+        path = max(paths, key=os.path.basename)
+        if path != last:
+            image = cv2.imread(path, cv2.IMREAD_COLOR)
+            if image is not None:
+                height, width = image.shape[:2]
+                target_width = 960
+                target_height = max(1, int(height * target_width / width))
+                resized = cv2.resize(
+                    image,
+                    (target_width, target_height),
+                    interpolation=cv2.INTER_AREA,
+                )
+                ok, encoded = cv2.imencode(
+                    ".jpg",
+                    resized,
+                    [int(cv2.IMWRITE_JPEG_QUALITY), 72],
+                )
+                if ok:
+                    payload = encoded.tobytes()
+                    sys.stdout.buffer.write(len(payload).to_bytes(4, "big"))
+                    sys.stdout.buffer.write(payload)
+                    sys.stdout.buffer.flush()
+                    last = path
+    time.sleep(0.20)
+'''
 
 COMMAND_ENDPOINTS: dict[str, tuple[str, str]] = {
     "save_reset_pose": ("POST", "/api/custom_arm_reset_pose"),
@@ -410,16 +440,6 @@ fi
                 return max((str(path) for path in paths), key=lambda path: Path(path).name)
         return None
 
-    @staticmethod
-    def _optimize_live_frame(content: bytes) -> bytes:
-        if not content.startswith(b"\xff\xd8"):
-            raise RuntimeError("live camera source returned a non-JPEG frame")
-        with Image.open(io.BytesIO(content)) as image:
-            image.thumbnail((960, 768), Image.Resampling.BILINEAR)
-            output = io.BytesIO()
-            image.save(output, format="JPEG", quality=72)
-            return output.getvalue()
-
     async def read_camera_preview(self, channel: str) -> AdapterCameraFrame:
         if channel not in CAMERA_PREVIEW_CHANNELS:
             raise ValueError("unknown camera preview channel")
@@ -430,8 +450,9 @@ fi
                 if path is not None:
                     async with sftp.open(path, "rb") as file_handle:
                         content = cast(bytes, await file_handle.read())
-                    optimized = await asyncio.to_thread(self._optimize_live_frame, content)
-                    return AdapterCameraFrame(content=optimized, media_type="image/jpeg")
+                    if not content.startswith(b"\xff\xd8"):
+                        raise RuntimeError("live camera source returned a non-JPEG frame")
+                    return AdapterCameraFrame(content=content, media_type="image/jpeg")
         async with self._ssh() as connection:
             manifest = await self._collector_request_on_connection(connection, "GET", "/api/custom_preview_images")
             data = manifest.get("data", {})
@@ -466,17 +487,23 @@ fi
 
         async def frames() -> AsyncIterator[AdapterCameraFrame]:
             async with self._ssh() as connection:
-                sftp = await connection.start_sftp_client()
-                last_path: str | None = None
-                while True:
-                    path = await self._latest_live_head_path(sftp)
-                    if path is not None and path != last_path:
-                        async with sftp.open(path, "rb") as file_handle:
-                            content = cast(bytes, await file_handle.read())
-                        optimized = await asyncio.to_thread(self._optimize_live_frame, content)
-                        last_path = path
-                        yield AdapterCameraFrame(content=optimized, media_type="image/jpeg")
-                    await asyncio.sleep(0.25)
+                process = await connection.create_process(
+                    f"python3 -u -c {shlex.quote(LIVE_HEAD_STREAM_READER)}",
+                    encoding=None,
+                )
+                try:
+                    while True:
+                        header = cast(bytes, await process.stdout.readexactly(4))
+                        size = int.from_bytes(header, "big")
+                        if size <= 0 or size > 2 * 1024 * 1024:
+                            raise RuntimeError("live camera reader returned an invalid frame size")
+                        content = cast(bytes, await process.stdout.readexactly(size))
+                        if not content.startswith(b"\xff\xd8"):
+                            raise RuntimeError("live camera reader returned a non-JPEG frame")
+                        yield AdapterCameraFrame(content=content, media_type="image/jpeg")
+                finally:
+                    process.terminate()
+                    await process.wait()
 
         return frames()
 

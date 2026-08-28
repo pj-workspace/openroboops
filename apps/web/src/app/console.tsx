@@ -263,7 +263,7 @@ function CollectionView({ robot, notify }: { robot: Robot; notify: (message: str
     // The request resolves asynchronously; this initializes server-backed camera state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPreviews();
-    const interval = window.setInterval(loadPreviews, 1_000);
+    const interval = window.setInterval(loadPreviews, 3_000);
     return () => window.clearInterval(interval);
   }, [loadPreviews]);
   async function start(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); setBusy(true); try { await post(`/api/v1/robots/${robot.id}/collections`, { name: String(form.get("name")), planned_duration_seconds: Number(form.get("duration")) }); notify("Collection started and the collector UID was persisted."); await Promise.all([load(), loadPreviews()]); event.currentTarget.reset(); } catch (error) { notify(error instanceof Error ? error.message : "Collection failed"); } finally { setBusy(false); } }
