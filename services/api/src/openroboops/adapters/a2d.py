@@ -170,7 +170,7 @@ class A2DAdapter(RobotAdapter):
         episodes: list[AdapterEpisode] = []
         async with self._ssh() as connection:
             tree_result = await connection.run(
-                f"find {shlex.quote(root)} -mindepth 2 -type f -printf '%P\\0%s\\0'",
+                f"find {shlex.quote(root)} -mindepth 2 -maxdepth 3 -type f -printf '%P\\0%s\\0'",
                 check=False,
                 timeout=30,
             )
@@ -208,6 +208,7 @@ class A2DAdapter(RobotAdapter):
                     ]
                     metadata["_openroboops"] = {
                         "file_tree": files,
+                        "file_tree_max_depth": 3,
                         "missing_items": missing_items,
                     }
                     duration = next(
@@ -224,7 +225,9 @@ class A2DAdapter(RobotAdapter):
                             source_path=f"{root}/{uid}",
                             metadata=metadata,
                             channels=channels,
-                            file_size=sum(int(item["size"]) for item in files),
+                            file_size=int(metadata.get("file_size", 0))
+                            if isinstance(metadata.get("file_size"), int | float)
+                            else sum(int(item["size"]) for item in files),
                             duration_seconds=float(duration),
                             aligned=bool(metadata.get("is_aligned", False)),
                             validation_status=validation_status,
