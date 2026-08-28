@@ -64,3 +64,13 @@ test("opens the observe-only robot registration flow", async ({ page }) => {
   await expect(page.getByLabel("Pinned known_hosts file")).toBeVisible();
   await expect(page.getByLabel("Private key file")).toBeVisible();
 });
+
+test("switches to Chinese and persists the language preference", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTitle("Switch language").click();
+  await expect(page.getByText("左臂")).toBeVisible();
+  await expect(page.getByRole("button", { name: "概览" })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText("机械臂就绪状态")).toBeVisible();
+});
