@@ -30,6 +30,21 @@ const robot = {
   updated_at: "2026-08-28T08:00:00Z",
 };
 
+const episode = {
+  id: "episode-1",
+  robot_id: robot.id,
+  uid: "historical-episode",
+  source_path: "/data/record/historical-episode",
+  metadata: { create_time: "2026-08-21 09:33:01", task_id: 12775 },
+  channels: ["head"],
+  file_size: 4_937_339_725,
+  duration_seconds: 268,
+  aligned: false,
+  validation_status: "valid",
+  sync_status: "not_synced",
+  last_scanned_at: "2026-08-28T07:10:00Z",
+};
+
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
@@ -37,7 +52,7 @@ test.beforeEach(async ({ page }) => {
       return route.fulfill({ json: { id: "admin-1", username: "admin" } });
     }
     if (url.pathname === "/api/v1/robots") return route.fulfill({ json: [robot] });
-    if (url.pathname.endsWith("/episodes")) return route.fulfill({ json: [] });
+    if (url.pathname.endsWith("/episodes")) return route.fulfill({ json: [episode] });
     if (url.pathname === "/api/v1/sync-jobs") return route.fulfill({ json: [] });
     if (url.pathname.endsWith("/collections")) return route.fulfill({ json: [] });
     if (url.pathname.endsWith("/camera-previews")) return route.fulfill({ json: [] });
@@ -86,4 +101,26 @@ test("keeps all three camera slots when no preview is available", async ({ page 
   await expect(cameraGrid.getByText("Head camera")).toBeVisible();
   await expect(cameraGrid.getByText("Right hand camera")).toBeVisible();
   await expect(cameraGrid.getByText("No live frame")).toHaveCount(3);
+});
+
+test("shows collection time separately from the latest scan time", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Data" }).click();
+
+  await expect(page.getByText(/Collected.*Aug 21/)).toBeVisible();
+  await expect(page.getByText(/Last scanned.*Aug 28/)).toBeVisible();
+});
+
+test("keeps camera previews mounted while another section is open", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Collection" }).click();
+  const cameraGrid = page.locator(".camera-grid");
+  await expect(cameraGrid).toBeVisible();
+
+  await page.getByRole("button", { name: "Overview" }).click();
+  await expect(cameraGrid).toBeHidden();
+  await expect(cameraGrid).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Collection" }).click();
+  await expect(cameraGrid).toBeVisible();
 });

@@ -69,6 +69,18 @@ function date(value: string | null | undefined): string {
   }).format(new Date(value));
 }
 
+function episodeCapturedAt(metadata: Json): string | null {
+  const createTime = metadata.create_time;
+  if (typeof createTime === "string" && createTime.trim()) {
+    return createTime.includes("T") ? createTime : createTime.replace(" ", "T");
+  }
+  const clipStartTime = metadata.clip_start_time;
+  if (typeof clipStartTime === "number" && Number.isFinite(clipStartTime)) {
+    return new Date(clipStartTime * 1_000).toISOString();
+  }
+  return null;
+}
+
 function Icon({ name }: { name: string }) {
   const paths: Record<string, ReactNode> = {
     overview: <><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></>,
@@ -250,7 +262,8 @@ function DataView({ robot, notify }: { robot: Robot; notify: (message: string) =
     {visible.length ? <div className="table-wrap"><table><thead><tr><th>{t("Episode")}</th><th>{t("Task")}</th><th>{t("Channels")}</th><th>{t("Size / duration")}</th><th>{t("Quality")}</th><th>{t("Sync")}</th><th /></tr></thead><tbody>{visible.map((episode) => {
       const metadata = asObject(episode.metadata); const job = jobs.find((item) => item.episode_id === episode.id && ["queued", "running", "verifying"].includes(item.status));
       const inspection = asObject(metadata._openroboops); const fileTree = Array.isArray(inspection.file_tree) ? inspection.file_tree : []; const missing = Array.isArray(inspection.missing_items) ? inspection.missing_items : [];
-      return <tr key={episode.id}><td><strong className="mono">{episode.uid}</strong><small>{date(episode.last_scanned_at)}</small>{fileTree.length > 0 && <details className="file-tree"><summary>{fileTree.length} {t("files")}</summary>{fileTree.slice(0, 40).map((entry, index) => <span key={index}>{text(asObject(entry).path)}</span>)}{fileTree.length > 40 && <span>…{t("and {count} more", { count: fileTree.length - 40 })}</span>}</details>}</td><td>{text(metadata.text, text(metadata.task_id))}</td><td><div className="chips">{episode.channels.map((channel) => <span key={channel}>{channel}</span>)}</div></td><td>{bytes(episode.file_size)}<small>{Math.round(episode.duration_seconds)} {t("sec")}</small></td><td><Badge tone={episode.validation_status === "valid" ? "success" : "warning"}>{episode.validation_status}</Badge><small>{episode.aligned ? t("aligned") : t("not aligned")}</small>{missing.length > 0 && <small className="warning-text">{t("Missing")}: {missing.map(String).join(", ")}</small>}</td><td>{job ? <><Badge tone="info">{job.status} {job.progress}%</Badge><div className="progress"><span style={{ width: `${job.progress}%` }} /></div></> : <Badge tone={episode.sync_status === "completed" ? "success" : "neutral"}>{episode.sync_status}</Badge>}</td><td>{job?.status === "queued" ? <button className="button small" onClick={() => cancel(job)}>{t("Cancel")}</button> : <button className="button small" onClick={() => sync(episode)} disabled={Boolean(job)}>{t("Sync")}</button>}</td></tr>;
+      const capturedAt = episodeCapturedAt(metadata);
+      return <tr key={episode.id}><td><strong className="mono">{episode.uid}</strong><small>{t("Collected")} {capturedAt ? date(capturedAt) : t("Unknown")}</small><small>{t("Last scanned")} {date(episode.last_scanned_at)}</small>{fileTree.length > 0 && <details className="file-tree"><summary>{fileTree.length} {t("files")}</summary>{fileTree.slice(0, 40).map((entry, index) => <span key={index}>{text(asObject(entry).path)}</span>)}{fileTree.length > 40 && <span>…{t("and {count} more", { count: fileTree.length - 40 })}</span>}</details>}</td><td>{text(metadata.text, text(metadata.task_id))}</td><td><div className="chips">{episode.channels.map((channel) => <span key={channel}>{channel}</span>)}</div></td><td>{bytes(episode.file_size)}<small>{Math.round(episode.duration_seconds)} {t("sec")}</small></td><td><Badge tone={episode.validation_status === "valid" ? "success" : "warning"}>{episode.validation_status}</Badge><small>{episode.aligned ? t("aligned") : t("not aligned")}</small>{missing.length > 0 && <small className="warning-text">{t("Missing")}: {missing.map(String).join(", ")}</small>}</td><td>{job ? <><Badge tone="info">{job.status} {job.progress}%</Badge><div className="progress"><span style={{ width: `${job.progress}%` }} /></div></> : <Badge tone={episode.sync_status === "completed" ? "success" : "neutral"}>{episode.sync_status}</Badge>}</td><td>{job?.status === "queued" ? <button className="button small" onClick={() => cancel(job)}>{t("Cancel")}</button> : <button className="button small" onClick={() => sync(episode)} disabled={Boolean(job)}>{t("Sync")}</button>}</td></tr>;
     })}</tbody></table></div> : <Empty>{t("No episodes match this filter.")}</Empty>}
   </section>;
 }
@@ -325,6 +338,7 @@ function ConsoleContent() {
   const { t } = useI18n();
   const [user, setUser] = useState<User | null>(null); const [robots, setRobots] = useState<Robot[]>([]);
   const [selectedId, setSelectedId] = useState(""); const [view, setView] = useState<View>("overview");
+  const [collectionMounted, setCollectionMounted] = useState(false);
   const [showAdd, setShowAdd] = useState(false); const [notice, setNotice] = useState(""); const [busy, setBusy] = useState(false);
   const loadRobots = useCallback(async () => { const rows = await api<Robot[]>("/api/v1/robots"); setRobots(rows); setSelectedId((current) => current && rows.some((robot) => robot.id === current) ? current : rows[0]?.id ?? ""); }, []);
   const selected = useMemo(() => robots.find((robot) => robot.id === selectedId), [robots, selectedId]);
@@ -347,12 +361,12 @@ function ConsoleContent() {
   return <div className="app-shell"><aside className="sidebar">
     <div className="brand"><div className="brand-mark small"><Icon name="robot" /></div><div className="brand-copy"><strong>OpenRoboOps</strong><span>{t("Fleet control plane")}</span></div><LanguageToggle compact /></div>
     <div className="sidebar-label"><span>{t("Robots").toUpperCase()} · {robots.length}</span><button className="icon-button" onClick={() => setShowAdd(true)} title={t("Add robot")}><Icon name="plus" /></button></div>
-    <div className="robot-list">{robots.map((robot) => <button key={robot.id} className={selectedId === robot.id ? "selected" : ""} onClick={() => { setSelectedId(robot.id); setView("overview"); }}><div className="robot-avatar"><Icon name="robot" /></div><span><strong>{robot.name}</strong><small><Dot online={robot.online} />{robot.online ? t("Online") : t("Offline")} · {robot.model}</small></span></button>)}</div>
+    <div className="robot-list">{robots.map((robot) => <button key={robot.id} className={selectedId === robot.id ? "selected" : ""} onClick={() => { setSelectedId(robot.id); setView("overview"); setCollectionMounted(false); }}><div className="robot-avatar"><Icon name="robot" /></div><span><strong>{robot.name}</strong><small><Dot online={robot.online} />{robot.online ? t("Online") : t("Offline")} · {robot.model}</small></span></button>)}</div>
     <div className="sidebar-footer"><div className="user"><span>{user.username.slice(0, 2).toUpperCase()}</span><div><strong>{user.username}</strong><small>{t("Administrator")}</small></div></div><button className="icon-button" onClick={logout} title={t("Sign out")}><Icon name="logout" /></button></div>
   </aside><main className="workspace">{selected ? <>
     <header className="topbar"><div><div className="title-line"><h1>{selected.name}</h1><Badge tone={selected.online ? "success" : "danger"}><Dot online={selected.online} />{selected.online ? t("Online") : t("Offline")}</Badge>{selected.observe_only && <Badge tone="info">{t("Observe only")}</Badge>}</div><p>{selected.model} · {selected.adapter_type} {t("adapter")} · {t("last seen")} {date(selected.last_seen)}</p></div><button className="button" onClick={probe} disabled={busy}><Icon name="refresh" />{busy ? t("Probing…") : t("Probe connection")}</button></header>
-    <nav className="tabs">{views.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)}><Icon name={item.id} />{t(item.label)}</button>)}</nav>
-    <div className="content">{view === "overview" && <Overview robot={selected} />}{view === "data" && <DataView robot={selected} notify={setNotice} />}{view === "collection" && <CollectionView robot={selected} notify={setNotice} />}{view === "operations" && <OperationsView robot={selected} notify={setNotice} />}{view === "audit" && <AuditView robot={selected} notify={setNotice} />}</div>
+    <nav className="tabs">{views.map((item) => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); if (item.id === "collection") setCollectionMounted(true); }}><Icon name={item.id} />{t(item.label)}</button>)}</nav>
+    <div className="content">{view === "overview" && <Overview robot={selected} />}{view === "data" && <DataView robot={selected} notify={setNotice} />}{collectionMounted && <div hidden={view !== "collection"}><CollectionView robot={selected} notify={setNotice} /></div>}{view === "operations" && <OperationsView robot={selected} notify={setNotice} />}{view === "audit" && <AuditView robot={selected} notify={setNotice} />}</div>
   </> : <div className="no-robot"><div className="brand-mark"><Icon name="robot" /></div><h1>{t("Register your first robot")}</h1><p>{t("Start with the simulator or add an A2D robot in observe-only mode.")}</p><button className="button primary" onClick={() => setShowAdd(true)}><Icon name="plus" />{t("Add robot")}</button></div>}</main>
     {notice && <div className="toast">{notice}</div>}
     {showAdd && <AddRobot onClose={() => setShowAdd(false)} onCreated={(robot) => { setRobots((items) => [...items, robot]); setSelectedId(robot.id); setShowAdd(false); setNotice(t("Robot registered in observe-only mode.")); }} />}

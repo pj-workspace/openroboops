@@ -129,6 +129,8 @@ const chinese: Record<string, string> = {
   "not aligned": "未对齐",
   Missing: "缺失",
   "No episodes match this filter.": "没有符合筛选条件的采集片段。",
+  Collected: "采集于",
+  "Last scanned": "最后扫描",
   "Local orchestration": "本地采集编排",
   "Start collection": "开始采集",
   "Allocates local task/job IDs and preserves the collector UID. No vendor upload, discard, or auto-cleanup call is used.": "分配本地任务 ID 并保留采集器 UID；不会调用厂商上传、丢弃或自动清理接口。",
