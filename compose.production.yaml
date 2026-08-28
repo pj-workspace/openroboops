@@ -1,0 +1,12 @@
+services:
+  api:
+    image: ${OPENROBOOPS_API_IMAGE:-ghcr.io/pj-workspace/openroboops-api:latest}
+    build: !reset null
+
+  worker:
+    image: ${OPENROBOOPS_API_IMAGE:-ghcr.io/pj-workspace/openroboops-api:latest}
+    build: !reset null
+
+  web:
+    image: ${OPENROBOOPS_WEB_IMAGE:-ghcr.io/pj-workspace/openroboops-web:latest}
+    build: !reset null

@@ -87,6 +87,9 @@ curl -k https://localhost:8443/api/v1/healthz
 
 默认 simulator 支持连接检测、数据索引、采集、同步和无实机运维命令验证。
 
+生产主机可以增加 `-f compose.production.yaml`，直接从 GHCR 拉取应用镜像，
+无需在主机上构建 Python 或 Node.js 项目。
+
 ## 本地开发
 
 ### API

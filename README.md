@@ -87,6 +87,9 @@ curl -k https://localhost:8443/api/v1/healthz
 
 The seeded simulator can be probed, indexed, collected, synced, and safely commanded without physical hardware.
 
+Production hosts can avoid local Python/Node builds by adding
+`-f compose.production.yaml`; published application images are pulled from GHCR.
+
 ## Local development
 
 ### API

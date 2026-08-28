@@ -29,10 +29,15 @@ Do not commit `.env` or `runtime-secrets`.
 ## Start and initialize
 
 ```bash
-docker compose up --build -d
+docker compose -f compose.yaml -f compose.production.yaml pull
+docker compose -f compose.yaml -f compose.production.yaml up -d
 docker compose ps
 docker compose logs api | grep "First-run bootstrap token"
 ```
+
+The production override pulls published API and web images from GitHub Container
+Registry, so the deployment host does not compile Python or Node.js applications.
+Use `docker compose up --build -d` without the override when building locally.
 
 Use the token once in the web setup page. After the administrator is created, the
 token hash is deleted. Do not paste the token into an issue, chat transcript, or
@@ -49,8 +54,8 @@ Internet without an explicit network and identity security review.
 
 ```bash
 git pull --ff-only
-docker compose build
-docker compose up -d
+docker compose -f compose.yaml -f compose.production.yaml pull
+docker compose -f compose.yaml -f compose.production.yaml up -d
 docker compose exec postgres pg_dump -U openroboops -Fc openroboops > openroboops.dump
 ```
 
