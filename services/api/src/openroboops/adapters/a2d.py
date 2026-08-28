@@ -437,6 +437,30 @@ fi
                 "restart": restart.get("data", {}),
             }
 
+    async def read_collection_activity(self, record_uid: str) -> bool | None:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", record_uid):
+            raise ValueError("invalid record UID")
+        root = self.data_root.rstrip("/")
+        directories = [
+            f"{root}/{record_uid}/camera/{directory}/color"
+            for directory in ("hand_left", "head", "hand_right")
+        ]
+        command = (
+            "latest=$(stat -c %Y "
+            + " ".join(shlex.quote(directory) for directory in directories)
+            + " 2>/dev/null | sort -nr | head -1); "
+            "if [ -z \"$latest\" ]; then echo unknown; "
+            "else now=$(date +%s); echo \"$now $latest\"; fi"
+        )
+        async with self._ssh() as connection:
+            result = await connection.run(command, check=False, timeout=6)
+        stdout = result.stdout if isinstance(result.stdout, str) else ""
+        fields = stdout.strip().split()
+        if result.exit_status != 0 or len(fields) != 2 or not all(value.isdigit() for value in fields):
+            return None
+        now, latest = (int(value) for value in fields)
+        return 0 <= now - latest <= 15
+
     async def discard_episode(self, uid: str) -> dict[str, Any]:
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", uid):
             raise ValueError("invalid episode UID")

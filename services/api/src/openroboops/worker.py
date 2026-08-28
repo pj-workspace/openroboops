@@ -65,7 +65,8 @@ class Worker:
                 old_online = robot.online
                 old_status = json.dumps(robot.status, sort_keys=True, default=str)
                 try:
-                    adapter_status = await create_adapter(robot.adapter_type, robot.connection).read_status()
+                    adapter = create_adapter(robot.adapter_type, robot.connection)
+                    adapter_status = await adapter.read_status()
                     active_collection = await db.scalar(
                         select(CollectionSession).where(
                             CollectionSession.robot_id == robot.id,
@@ -75,6 +76,21 @@ class Worker:
                     payload = dict(adapter_status.payload)
                     reported_recording = payload.get("recording")
                     if active_collection is not None and robot.adapter_type == "a2d":
+                        if active_collection.record_uid:
+                            try:
+                                file_activity = await adapter.read_collection_activity(
+                                    active_collection.record_uid
+                                )
+                            except Exception as exc:
+                                file_activity = None
+                                logger.warning(
+                                    "Collection activity probe failed for %s: %s",
+                                    active_collection.id,
+                                    exc,
+                                )
+                            if file_activity is not None:
+                                reported_recording = file_activity
+                                payload["recordingActivity"] = "active" if file_activity else "stale"
                         if reported_recording is True:
                             self.collection_misses.pop(active_collection.id, None)
                         elif reported_recording is False:

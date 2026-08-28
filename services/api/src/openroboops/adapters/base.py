@@ -78,6 +78,9 @@ class RobotAdapter(ABC):
     async def force_stop_collection(self, record_uid: str) -> dict[str, Any]:
         return await self.stop_collection(record_uid)
 
+    async def read_collection_activity(self, record_uid: str) -> bool | None:
+        return None
+
     async def discard_episode(self, uid: str) -> dict[str, Any]:
         raise NotImplementedError("episode discard unsupported")
 

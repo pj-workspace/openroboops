@@ -33,7 +33,7 @@ def test_simulator_end_to_end() -> None:
 
         robots_response = client.get("/api/v1/robots")
         assert robots_response.status_code == 200
-        robot = robots_response.json()[0]
+        robot = next(item for item in robots_response.json() if item["adapter_type"] == "simulator")
         robot_id = robot["id"]
 
         probe = client.post(f"/api/v1/robots/{robot_id}/probe", headers=headers)

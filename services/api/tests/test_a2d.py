@@ -233,3 +233,22 @@ async def test_a2d_discard_is_explicit(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert result == {"discarded": True}
     assert calls == [("POST", "/api/custom_discard?uuid=record-uid")]
+
+
+@pytest.mark.asyncio
+async def test_a2d_detects_active_collection_from_camera_directory_mtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter = A2DAdapter({})
+
+    class ActivityConnection:
+        async def run(self, _command: str, **_kwargs: object):
+            return type("Result", (), {"stdout": "200 190\n", "exit_status": 0})()
+
+    @asynccontextmanager
+    async def fake_ssh():
+        yield ActivityConnection()
+
+    monkeypatch.setattr(adapter, "_ssh", fake_ssh)
+
+    assert await adapter.read_collection_activity("record-uid") is True
